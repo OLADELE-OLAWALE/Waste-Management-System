@@ -36,6 +36,12 @@ and recommends where to place bins.
   distance estimated as 1.3 × straight-line distance, walking time at 1.3 m/s, plus the next 3 alternatives.
 * **Report:** pick No bin / Overflowing / Damaged. Location comes from GPS or a tap on the map. Overflowing or
   damaged reports must name a bin (the 6 closest are listed). Details and name are optional.
+* **QR stickers:** a sticker on each bin links to `/?bin=<id>`, which opens the report form with that bin already
+  selected, so reporting an overflow takes two taps and needs no GPS. Print them from `/qr.html`.
+
+**Duplicate handling.** Several students reporting the same overflowing bin is genuine evidence and must count,
+so reports are never merged. What is blocked is the *same browser* repeating the same report type within 25 m in
+10 minutes (a double tap), plus a cap of 30 reports per hour from one network so a public link cannot be flooded.
 
 ### 2. Admin dashboard (`/admin`)
 ```
@@ -57,7 +63,7 @@ since the dashboard was opened.
 |---|---|---|
 | `zones` | name, type, lat, lng, radius_m, foot_traffic | Campus areas: classrooms, hostels, cafeteria, gate… |
 | `bins` | name, lat, lng, zone_id, capacity_l, status (`ok`/`full`/`damaged`), last_emptied | An overflowing report sets `full`; "Mark emptied" sets `ok` and closes its reports |
-| `reports` | type (`no_bin`/`overflowing`/`damaged`), lat, lng, bin_id, zone_id, nearest_bin_m, note, reporter, status, created_at | Each report is assigned to the nearest zone. `nearest_bin_m` shows how far a "no bin" spot is from any bin |
+| `reports` | type (`no_bin`/`overflowing`/`damaged`), lat, lng, bin_id, zone_id, nearest_bin_m, note, reporter, device_id, reporter_key, status, created_at | Each report is assigned to the nearest zone. `nearest_bin_m` shows how far a "no bin" spot is from any bin. `device_id` is an anonymous per-browser id and `reporter_key` a hash of the network address: both exist only to spot duplicates, and no personal data or raw IP is stored |
 | `settings` | key/value | Model assumptions, editable in the dashboard |
 
 **Values from our field work:** 70 kg/day of waste, weekly collection, bins 0.45 m × 0.70 m (≈111 L),

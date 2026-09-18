@@ -7,7 +7,10 @@ Run:  python server.py            (then open http://localhost:8000)
 Uses only the Python standard library: no pip install needed.
 """
 import argparse
+import csv
+import hashlib
 import hmac
+import io
 import json
 import mimetypes
 import os
@@ -32,11 +35,26 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 REPORT_TYPES = ("no_bin", "overflowing", "damaged")
 BIN_STATUSES = ("ok", "full", "damaged")
 
+# Duplicate protection: the same phone repeating the same report type within this
+# distance and time is treated as a double tap, not as new evidence.
+DUPLICATE_WINDOW_S = 10 * 60
+DUPLICATE_RADIUS_M = 25
+REPORTS_PER_HOUR = 30          # per network, to absorb a burst on a public link
+# Reports store a hash of the network address, never the address itself.
+IP_SALT = os.environ.get("IP_SALT", "team-alpha-binfinder")
+
 
 class ApiError(Exception):
     def __init__(self, status, msg):
         super().__init__(msg)
         self.status = status
+
+
+class Raw:
+    """A non-JSON response (used for the CSV download)."""
+
+    def __init__(self, body, content_type, headers=None):
+        self.body, self.content_type, self.headers = body, content_type, headers or {}
 
 
 def need(body, key, kind=float):
@@ -49,10 +67,18 @@ def need(body, key, kind=float):
 
 
 def analytics():
-    s = db.get_settings(con)
-    bins = db.rows(con, "SELECT * FROM bins")
-    zones = db.rows(con, "SELECT * FROM zones")
-    reports = db.rows(con, "SELECT * FROM reports")
+    # The dashboard polls this every few seconds. Over a hosted database four separate
+    # queries mean four network round trips, so ask for them in one where we can.
+    queries = [("SELECT key, value FROM settings", ()), ("SELECT * FROM bins", ()),
+               ("SELECT * FROM zones", ()), ("SELECT * FROM reports", ())]
+    if hasattr(con, "batch"):
+        settings_rows, bins, zones, reports = [r.fetchall() for r in con.batch(queries)]
+    else:
+        settings_rows, bins, zones, reports = [con.execute(q, a).fetchall() for q, a in queries]
+    s = db.settings_from_rows(settings_rows)
+    bins = [dict(b) for b in bins]
+    zones = [dict(z) for z in zones]
+    reports = [dict(r) for r in reports]
     result = intelligence.analyse(bins, zones, reports, s)
     day_ago = time.time() - 86400
     result["kpis"] = {
@@ -195,6 +221,28 @@ def list_reports(m, body):
                         "ORDER BY r.created_at DESC LIMIT 200")
 
 
+def check_not_duplicate(typ, lat, lng, device_id, reporter_key):
+    """Stop one phone spamming the same problem, without silencing genuine reports.
+
+    Several students reporting the same overflowing bin is real signal and must count.
+    What we block is the same device repeating the same report type nearby within a few
+    minutes (double taps, or someone playing with the public link), plus an hourly cap
+    per network so a burst cannot swamp the data during a demo.
+    """
+    now = time.time()
+    if reporter_key:
+        recent = con.execute("SELECT COUNT(*) FROM reports WHERE reporter_key=? AND created_at>?",
+                             (reporter_key, now - 3600)).fetchone()[0]
+        if recent >= REPORTS_PER_HOUR:
+            raise ApiError(429, "Too many reports from this network in the last hour.")
+    if not device_id:
+        return
+    for r in db.rows(con, "SELECT lat, lng FROM reports WHERE device_id=? AND type=? AND created_at>?",
+                     (device_id, typ, now - DUPLICATE_WINDOW_S)):
+        if intelligence.haversine_m(lat, lng, r["lat"], r["lng"]) < DUPLICATE_RADIUS_M:
+            raise ApiError(429, "You already reported this here a few minutes ago. Thank you!")
+
+
 @route("POST", "/api/reports")
 def create_report(m, body):
     typ = body.get("type")
@@ -208,14 +256,40 @@ def create_report(m, body):
         raise ApiError(400, "select the bin that is overflowing or damaged")
     note = str(body.get("note", ""))[:500]
     reporter = str(body.get("reporter", "anonymous"))[:60] or "anonymous"
+    device_id = str(body.get("device_id", ""))[:64] or None
+    reporter_key = body.get("_reporter_key")
     with db._lock:
+        check_not_duplicate(typ, lat, lng, device_id, reporter_key)
         try:
             rid = db.insert_report(con, typ, lat, lng,
-                                   int(bin_id) if bin_id is not None else None, reporter, note)
+                                   int(bin_id) if bin_id is not None else None, reporter, note,
+                                   device_id=device_id, reporter_key=reporter_key)
         except ValueError as e:
             raise ApiError(400, str(e))
         con.commit()
     return {"id": rid}
+
+
+@route("GET", r"/api/reports\.csv")
+def reports_csv(m, body):
+    """Download every report as a spreadsheet, for the research report's appendix."""
+    fields = ["id", "type", "status", "zone", "bin", "lat", "lng", "nearest_bin_m",
+              "note", "reporter", "created_at", "resolved_at"]
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow(["id", "type", "status", "zone", "bin", "latitude", "longitude",
+                "distance_to_nearest_bin_m", "note", "reported_by", "reported_at", "resolved_at"])
+    for r in list_reports(None, {}):
+        row = []
+        for f in fields:
+            v = r.get(f)
+            if f in ("created_at", "resolved_at") and v:
+                v = time.strftime("%Y-%m-%d %H:%M", time.localtime(v))
+            row.append("" if v is None else v)
+        w.writerow(row)
+    stamp = time.strftime("%Y-%m-%d")
+    return Raw(out.getvalue().encode("utf-8-sig"), "text/csv",
+               {"Content-Disposition": f'attachment; filename="bin-reports-{stamp}.csv"'})
 
 
 @route("POST", r"/api/reports/(\d+)/resolve", admin=True)
@@ -288,6 +362,15 @@ class Handler(BaseHTTPRequestHandler):
         if not (isinstance(first, str) and "/api/analytics" in first):
             super().log_message(fmt, *args)
 
+    def send_raw(self, raw):
+        self.send_response(200)
+        self.send_header("Content-Type", raw.content_type)
+        self.send_header("Content-Length", str(len(raw.body)))
+        for k, v in raw.headers.items():
+            self.send_header(k, v)
+        self.end_headers()
+        self.wfile.write(raw.body)
+
     def send_json(self, status, data):
         raw = json.dumps(data).encode()
         self.send_response(status)
@@ -310,6 +393,12 @@ class Handler(BaseHTTPRequestHandler):
             return "/api/" + (route or "health")
         return parts.path
 
+    def client_key(self):
+        """A stable, anonymous id for the requester's network (hashed, never stored raw)."""
+        forwarded = self.headers.get("x-forwarded-for", "")
+        ip = forwarded.split(",")[0].strip() or self.client_address[0]
+        return hashlib.sha256((IP_SALT + ip).encode()).hexdigest()[:16]
+
     def authorised(self):
         if not ADMIN_PASSWORD:
             return True
@@ -330,9 +419,13 @@ class Handler(BaseHTTPRequestHandler):
                 if match and mth == method:
                     if admin_only and not self.authorised():
                         return self.send_json(401, {"error": "admin key required"})
+                    # Set server-side so it cannot be spoofed by the caller.
+                    body["_reporter_key"] = self.client_key()
                     try:
                         with db._lock:
                             result = fn(match, body)
+                        if isinstance(result, Raw):
+                            return self.send_raw(result)
                         return self.send_json(200, result)
                     except ApiError as e:
                         return self.send_json(e.status, {"error": str(e)})

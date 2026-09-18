@@ -57,6 +57,7 @@ CREATE TABLE IF NOT EXISTS reports (
   lat REAL NOT NULL, lng REAL NOT NULL,
   bin_id INTEGER REFERENCES bins(id), zone_id INTEGER REFERENCES zones(id),
   nearest_bin_m REAL, note TEXT, reporter TEXT,
+  device_id TEXT, reporter_key TEXT,
   status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','resolved')),
   created_at REAL NOT NULL, resolved_at REAL
 );
@@ -84,11 +85,15 @@ def rows(con, sql, args=()):
     return [dict(r) for r in con.execute(sql, args).fetchall()]
 
 
-def get_settings(con):
+def settings_from_rows(rows_):
     s = dict(DEFAULT_SETTINGS)
-    for r in con.execute("SELECT key, value FROM settings"):
+    for r in rows_:
         s[r["key"]] = json.loads(r["value"])
     return s
+
+
+def get_settings(con):
+    return settings_from_rows(con.execute("SELECT key, value FROM settings"))
 
 
 def offset(lat, lng, east_m, north_m):
@@ -204,7 +209,8 @@ def reset(con, seed_history=True):
         con.commit()
 
 
-def insert_report(con, typ, lat, lng, bin_id, reporter, note, created_at=None, apply_status=True):
+def insert_report(con, typ, lat, lng, bin_id, reporter, note, created_at=None, apply_status=True,
+                  device_id=None, reporter_key=None):
     from intelligence import nearest
     zones = rows(con, "SELECT * FROM zones")
     bins = rows(con, "SELECT * FROM bins")
@@ -216,18 +222,29 @@ def insert_report(con, typ, lat, lng, bin_id, reporter, note, created_at=None, a
             raise ValueError("unknown bin")
         zone = next(z for z in zones if z["id"] == b["zone_id"])
     cur = con.execute(
-        "INSERT INTO reports (type,lat,lng,bin_id,zone_id,nearest_bin_m,note,reporter,status,created_at) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO reports (type,lat,lng,bin_id,zone_id,nearest_bin_m,note,reporter,device_id,"
+        "reporter_key,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
         (typ, lat, lng, bin_id, zone["id"] if zone else None,
          None if nb_d == float("inf") else round(nb_d, 1),
-         note, reporter, "open", created_at or time.time()))
+         note, reporter, device_id, reporter_key, "open", created_at or time.time()))
     if apply_status and bin_id is not None:
         con.execute("UPDATE bins SET status=? WHERE id=?",
                     ("full" if typ == "overflowing" else "damaged", bin_id))
     return cur.lastrowid
 
 
+def migrate(con):
+    """Add columns introduced after a deployment already holds real reports."""
+    have = {r["name"] for r in con.execute("PRAGMA table_info(reports)")}
+    for column in ("device_id", "reporter_key"):
+        if column not in have:
+            con.execute(f"ALTER TABLE reports ADD COLUMN {column} TEXT")
+    con.commit()
+
+
 def ensure(con):
     exists = con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='bins'").fetchone()
     if not exists:
         reset(con)
+    else:
+        migrate(con)

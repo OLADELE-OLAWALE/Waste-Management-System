@@ -106,8 +106,63 @@ tr.flash { animation: flash 2.5s ease-out; }
 .row > * { flex: 1; }
 .callout { background: #f5f3ff; border: 1px solid #ddd6fe; border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 12px; }
 
+.tablewrap { overflow-x: auto; }
+
+/* ---------- one site for phones, tablets and projectors ---------- */
+
+/* Desktop: the student app is a phone-shaped app, so give it a fixed column
+   beside the map instead of stretching the controls across a wide screen. */
+@media (min-width: 900px) {
+  .student { flex-direction: row; }
+  .student #map { order: 1; }
+  .student .sheet { order: 2; flex: 0 0 380px; margin: 0; max-height: none;
+    border-radius: 0; box-shadow: -4px 0 16px rgba(0,0,0,.08); }
+  .student .topbar { position: absolute; top: 0; left: 0; right: 0; z-index: 600; }
+  .student #map { padding-top: 0; }
+  .student { position: relative; padding-top: 58px; }
+}
+
+/* Tablet and below: dashboard columns stack. */
 @media (max-width: 900px) {
-  .main { grid-template-columns: 1fr; }
-  .mapwrap { min-height: 420px; }
-  .side { max-height: none; }
+  .main { grid-template-columns: 1fr; padding: 0 12px 12px; gap: 10px; }
+  .mapwrap { min-height: 60vh; }
+  .side { max-height: none; min-height: 0; }
+}
+
+/* Phones: the dashboard has to be readable without pinching or asking for the
+   desktop site, so tiles shrink, tabs scroll sideways and tables scroll inside
+   their own box rather than stretching the page. */
+@media (max-width: 620px) {
+  .topbar { padding: 8px 12px; }
+  .topbar .brand { font-size: 15px; }
+  .topbar .sub { font-size: 11px; }
+  .topbar a { white-space: nowrap; font-size: 12px; align-self: flex-start; }
+  /* On a phone the ranked hotspots are what you actually want first; the map
+     needs a deliberate scroll rather than blocking everything below it. */
+  .main { display: flex; flex-direction: column; }
+  .side { order: 1; }
+  .mapwrap { order: 2; }
+  .kpis { grid-template-columns: repeat(2, 1fr); gap: 8px; padding: 10px 12px; }
+  .kpi { padding: 8px 10px; }
+  .kpi .v { font-size: 19px; }
+  .kpi .l { font-size: 11px; }
+  .mapwrap { min-height: 52vh; }
+  .layers { font-size: 12px; padding: 6px 8px; top: 6px; right: 6px; }
+  .side .tabs { display: flex; overflow-x: auto; scrollbar-width: none; }
+  .side .tabs::-webkit-scrollbar { display: none; }
+  .side .tabs button { flex: 0 0 auto; padding: 11px 13px; font-size: 13px; }
+  .panel { padding: 12px; }
+  table { font-size: 12px; }
+  th, td { padding: 6px 4px; }
+  .formgrid { grid-template-columns: 1fr 90px; }
+  .rec h3 { font-size: 14px; }
+  /* Touch targets stay finger-sized. */
+  .btn { padding: 10px 14px; }
+  .btn.sm { padding: 7px 11px; }
+}
+
+/* Short landscape phones: don't let the map eat the whole screen. */
+@media (max-height: 520px) and (orientation: landscape) {
+  .mapwrap { min-height: 320px; }
+  .sheet { max-height: 70vh; }
 }

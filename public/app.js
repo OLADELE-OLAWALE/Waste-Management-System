@@ -25,7 +25,39 @@ async function init() {
   document.getElementById("submit").addEventListener("click", submit);
 
   await loadBins();
+  applyScannedBin();
   setInterval(loadBins, 15000);
+}
+
+// A QR sticker on a bin links to /?bin=7, so scanning it opens the report form with
+// that bin already chosen: no GPS, no searching a list.
+function applyScannedBin() {
+  const params = new URLSearchParams(location.search);
+  const id = Number(params.get("bin"));
+  const b = state.bins.find((x) => x.id === id);
+  if (!b) return;
+  setMe(b.lat, b.lng, `At ${b.name}`);
+  map.setView([b.lat, b.lng], 19);
+  showTab("report");
+  state.target = b.id;
+  const type = params.get("type");
+  chooseType(REPORT_LABEL[type] ? type : b.status === "damaged" ? "damaged" : "overflowing");
+  toast(`📷 Reporting ${b.name}`);
+}
+
+// Anonymous per-browser id: lets the server ignore repeat taps from one phone while
+// still counting different students reporting the same problem.
+function deviceId() {
+  try {
+    let id = localStorage.getItem("binfinder_device");
+    if (!id) {
+      id = (crypto.randomUUID && crypto.randomUUID()) || String(Math.random()).slice(2) + Date.now();
+      localStorage.setItem("binfinder_device", id);
+    }
+    return id;
+  } catch {
+    return "";
+  }
 }
 
 async function loadBins() {
@@ -185,6 +217,7 @@ async function submit() {
         bin_id: state.type === "no_bin" ? null : state.target,
         note: document.getElementById("note").value,
         reporter: document.getElementById("reporter").value,
+        device_id: deviceId(),
       },
     });
     toast(`✅ Report #${r.id} sent. Thank you!`);

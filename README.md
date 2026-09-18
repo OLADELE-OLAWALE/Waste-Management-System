@@ -21,7 +21,7 @@ python server.py --reset    # restore demo data before a presentation
 | File | Stage |
 |---|---|
 | `DESIGN.md` | 1: Design |
-| `public/index.html`, `app.js`, `admin.html`, `admin.js`, `common.js`, `style.css` | 2: Frontend (Leaflet map) |
+| `public/index.html`, `app.js`, `admin.html`, `admin.js`, `qr.html`, `common.js`, `style.css` | 2: Frontend (Leaflet map) |
 | `database.py` (SQLite `bins.db`), `turso.py` (hosted SQLite), `server.py` (REST API) | 3: Database |
 | `intelligence.py` | 4: Hotspot scores, heatmap, recommendations |
 | `api/index.py`, `vercel.json` | Deployment entry point for Vercel |
@@ -82,6 +82,25 @@ Before you start: `python server.py --reset`. Open `/admin` on the projector and
 7. **Close the loop.** Click an overflowing bin › ✅ Mark emptied. It turns green, its reports resolve, and the score drops.
 8. **What-if** (⚙️ Model). Change "Days between collections" from 7 to 3, then Save. The bins needed and the
    recommendations shrink. This is the evidence for the collection-frequency part of our recommendation.
+
+## QR stickers for the bins
+
+Open `/qr.html` (also linked from the dashboard's 🎬 Demo tab) and print it. Each sticker carries the bin's code
+and a QR code; scanning it opens the report form with that bin already selected, so a student reports an
+overflowing bin in two taps without GPS or searching a list. Tape one to each bin, with clear tape over the top
+to keep the rain off, and test one with a phone camera before printing the full sheet.
+
+## Exporting the data
+
+The dashboard's 🚨 Reports tab has a **⬇️ CSV** button (`/api/reports.csv`) that downloads every report with its
+type, zone, bin, coordinates, distance to the nearest bin, note and timestamps: ready for the appendix of the
+research report, or for charts in Excel.
+
+## On phones
+
+Both pages are built for phones first and adapt upward: on a phone the dashboard shows its figures and the
+ranked hotspot table before the map, tables scroll sideways inside their own box, and nobody needs to
+switch to "desktop site". On a laptop or projector the student app puts its controls beside a large map.
 
 ## Before real campus data replaces the demo data
 1. Walk the campus with a phone and note each bin's position and condition.

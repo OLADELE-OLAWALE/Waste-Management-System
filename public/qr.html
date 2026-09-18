@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bin QR stickers · BinFinder</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .sheet-head { padding: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 10px; padding: 0 16px 24px; }
+    .sticker { border: 1px dashed #9ca3af; border-radius: 10px; padding: 12px; text-align: center; background: #fff; break-inside: avoid; }
+    .sticker h3 { font-size: 14px; margin-bottom: 2px; }
+    .sticker .zone { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+    .sticker .qr { display: flex; justify-content: center; }
+    .sticker .qr img, .sticker .qr canvas { width: 150px !important; height: 150px !important; }
+    .sticker .call { font-size: 12px; margin-top: 8px; font-weight: 600; }
+    .sticker .url { font-size: 10px; color: var(--muted); word-break: break-all; }
+    @media print {
+      .no-print { display: none !important; }
+      body { background: #fff; }
+      .grid { grid-template-columns: repeat(3, 1fr); }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar no-print">
+    <div>
+      <div class="brand">🏷️ Bin QR stickers</div>
+      <div class="sub">Scanning a sticker opens the report form with that bin already selected</div>
+    </div>
+    <a href="/admin">‹ Dashboard</a>
+  </header>
+
+  <div class="sheet-head no-print">
+    <div class="row" style="max-width:560px">
+      <button class="btn primary" onclick="window.print()">🖨️ Print stickers</button>
+      <label class="small muted" style="flex:2">Print, cut out, and tape one to each bin (clear tape over the top keeps
+        it dry). Test one with your phone camera before printing the whole sheet.</label>
+    </div>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="common.js"></script>
+<script>
+(async () => {
+  const grid = document.getElementById("grid");
+  let bins = [];
+  try {
+    bins = await api("/api/bins");
+  } catch (e) {
+    grid.innerHTML = `<p class="muted">Could not load bins: ${esc(e.message)}</p>`;
+    return;
+  }
+  if (!bins.length) {
+    grid.innerHTML = '<p class="muted">No bins yet. Add bins on the dashboard first.</p>';
+    return;
+  }
+  for (const b of bins) {
+    const url = `${location.origin}/?bin=${b.id}`;
+    const card = document.createElement("div");
+    card.className = "sticker";
+    // "BIN-04 Male Hostel" -> code on top, location underneath.
+    const code = b.name.split(" ")[0];
+    card.innerHTML = `<h3>${esc(code)}</h3>
+      <div class="zone">${esc(b.zone || b.name.slice(code.length).trim())}</div>
+      <div class="qr"></div>
+      <div class="call">Bin full or damaged?<br>Scan to report it</div>
+      <div class="url">${esc(url)}</div>`;
+    grid.appendChild(card);
+    new QRCode(card.querySelector(".qr"), { text: url, width: 300, height: 300, correctLevel: QRCode.CorrectLevel.M });
+  }
+})();
+</script>
+</body>
+</html>

@@ -46,10 +46,12 @@
           <span>Hotspot score = 40% reports + 30% bin deficit + 20% foot traffic + 10% overflow rate. Δ = change since baseline.</span>
           <button class="btn sm" id="baseline" style="flex:0 0 auto">Reset Δ baseline</button>
         </div>
-        <table>
-          <thead><tr><th>#</th><th>Zone</th><th>Score</th><th>Δ</th><th>Bins<br>have/need</th><th>Reports</th></tr></thead>
-          <tbody id="zone-rows"></tbody>
-        </table>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>#</th><th>Zone</th><th>Score</th><th>Δ</th><th>Bins<br>have/need</th><th>Reports</th></tr></thead>
+            <tbody id="zone-rows"></tbody>
+          </table>
+        </div>
       </div>
 
       <div class="panel" id="tab-recs" hidden>
@@ -63,11 +65,14 @@
             <option value="open">Open reports</option>
             <option value="all">All reports</option>
           </select>
+          <a class="btn sm" href="/api/reports.csv" style="flex:0 0 auto;text-decoration:none">⬇️ CSV</a>
         </div>
-        <table>
-          <thead><tr><th>#</th><th>Type</th><th>Where</th><th>When</th><th></th></tr></thead>
-          <tbody id="report-rows"></tbody>
-        </table>
+        <div class="tablewrap">
+          <table>
+            <thead><tr><th>#</th><th>Type</th><th>Where</th><th>When</th><th></th></tr></thead>
+            <tbody id="report-rows"></tbody>
+          </table>
+        </div>
       </div>
 
       <div class="panel" id="tab-settings" hidden>
@@ -100,6 +105,14 @@
             <button class="btn primary" id="simulate">Send</button>
           </div>
           <div class="small muted" style="margin-top:6px">Or send a real report from a phone at <b id="phone-url"></b>.</div>
+        </div>
+        <div class="section">
+          <h3>Bin QR stickers</h3>
+          <div class="row">
+            <a class="btn" href="/qr.html" target="_blank" style="text-decoration:none">🏷️ Open printable QR sheet</a>
+          </div>
+          <div class="small muted" style="margin-top:6px">One sticker per bin. Scanning it opens the report form with
+            that bin already selected, so a student reports an overflow in two taps.</div>
         </div>
         <div class="section">
           <h3>Edit campus data</h3>
