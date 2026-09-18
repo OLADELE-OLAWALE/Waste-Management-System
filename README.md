@@ -25,6 +25,7 @@ python server.py --reset    # restore demo data before a presentation
 | `database.py` (SQLite `bins.db`), `turso.py` (hosted SQLite), `server.py` (REST API) | 3: Database |
 | `intelligence.py` | 4: Hotspot scores, heatmap, recommendations |
 | `api/index.py`, `vercel.json` | Deployment entry point for Vercel |
+| `public/vendor/qrcode.min.js` | qrcodejs 1.0.0 (David Shim, MIT), served from our own site so blockers cannot break the sticker sheet |
 
 ## Deploy to Vercel
 

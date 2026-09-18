@@ -41,11 +41,19 @@
 
   <div class="grid" id="grid"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<!-- Served from our own site, not a CDN: ad blockers, tracking prevention and campus
+     network filters all block third-party scripts, which would leave empty stickers.
+     qrcodejs 1.0.0 by David Shim, MIT licence. -->
+<script src="vendor/qrcode.min.js"></script>
 <script src="common.js"></script>
 <script>
 (async () => {
   const grid = document.getElementById("grid");
+  if (typeof QRCode === "undefined") {
+    grid.innerHTML = '<p class="muted">The QR code library did not load. Refresh the page; if it keeps failing, ' +
+      'check that vendor/qrcode.min.js was deployed.</p>';
+    return;
+  }
   let bins = [];
   try {
     bins = await api("/api/bins");
