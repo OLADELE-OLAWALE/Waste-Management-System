@@ -52,7 +52,8 @@ Then Deploy. Vercel serves `public/` as static files and sends every `/api/*` re
 
 **3. First run**
 
-Open `https://your-project.vercel.app/admin`. The tables are created on the first request and the demo
+Check the wiring first at `https://your-project.vercel.app/api/` — it answers with the database in use
+and how many bins and reports it can see. Then open `https://your-project.vercel.app/admin`. The tables are created on the first request and the demo
 data is seeded automatically. Any action that changes data asks once for the `ADMIN_PASSWORD` you set,
 and the browser remembers it.
 

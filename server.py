@@ -16,7 +16,7 @@ import socket
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 import database as db
 import intelligence
@@ -84,6 +84,18 @@ def route(method, pattern, admin=False):
         ROUTES.append((method, re.compile(f"^{pattern}$"), fn, admin))
         return fn
     return deco
+
+
+@route("GET", "/api/health")
+def health(m, body):
+    """Quick check that a deployment is wired up: open /api/ in a browser."""
+    return {
+        "ok": True,
+        "database": "turso (hosted)" if type(con).__name__ == "TursoConnection" else "local sqlite file",
+        "bins": con.execute("SELECT COUNT(*) FROM bins").fetchone()[0],
+        "reports": con.execute("SELECT COUNT(*) FROM reports").fetchone()[0],
+        "admin_protected": bool(ADMIN_PASSWORD),
+    }
 
 
 @route("GET", "/api/campus")
@@ -270,7 +282,10 @@ def demo_simulate(m, body):
 
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
-        if "/api/analytics" not in (args[0] if args else ""):
+        # Keep the dashboard's 4-second polling out of the log, but note that
+        # log_error passes a status code here, not a request line.
+        first = args[0] if args else ""
+        if not (isinstance(first, str) and "/api/analytics" in first):
             super().log_message(fmt, *args)
 
     def send_json(self, status, data):
@@ -283,18 +298,17 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(raw)
 
     def request_path(self):
-        """The path the browser asked for.
+        """The API path being asked for.
 
-        On Vercel every /api/* URL is rewritten to this one function, and the original
-        path arrives in a header, so read that when the rewritten path shows up.
+        Locally that is simply the URL path. On Vercel this one function serves every
+        /api/* URL, so vercel.json rewrites "/api/bins" to "/api?route=bins" and the
+        real route is read back from that query parameter.
         """
-        path = urlparse(self.path).path
-        if path.rstrip("/") in ("/api/index.py", "/api/index", "/api"):
-            original = (self.headers.get("x-vercel-original-path")
-                        or self.headers.get("x-forwarded-uri") or "")
-            if original:
-                return urlparse(original).path
-        return path
+        parts = urlparse(self.path)
+        if parts.path.rstrip("/") in ("/api", "/api/index", "/api/index.py"):
+            route = parse_qs(parts.query).get("route", [""])[0].strip("/")
+            return "/api/" + (route or "health")
+        return parts.path
 
     def authorised(self):
         if not ADMIN_PASSWORD:

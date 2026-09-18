@@ -1,10 +1,14 @@
 """
 Vercel entry point.
 
-Vercel's Python runtime runs the `handler` exported here for every /api/* request
-(see vercel.json), and serves everything in public/ as static files. The handler is
-the same request handler that `python server.py` uses locally, so there is one
-implementation of the API rather than two.
+Vercel serves everything in public/ as static files and sends every /api/* request
+here (see vercel.json). The request handler is the same one `python server.py` uses
+locally, so there is a single implementation of the API rather than two.
+
+`handler` MUST be written as a top-level class inheriting from BaseHTTPRequestHandler:
+Vercel scans this file for that class to decide it is a function. An alias such as
+`handler = Handler` is not detected and the build fails with
+"doesn't match any Serverless Functions".
 """
 import sys
 import traceback
@@ -14,7 +18,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import database as db  # noqa: E402
 import server  # noqa: E402
-from server import Handler as handler  # noqa: E402,F401  (Vercel looks for `handler`)
+
+
+class handler(server.Handler):  # noqa: N801  (Vercel requires this exact name)
+    pass
+
 
 # Create the tables on a cold start, and seed the demo data the first time only.
 # A database problem must not stop the function from loading: let the failing request
