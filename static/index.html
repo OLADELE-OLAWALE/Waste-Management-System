@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>BinFinder · LASU Epe</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="student">
+  <header class="topbar">
+    <div>
+      <div class="brand">🗑️ BinFinder</div>
+      <div class="sub">LASU Epe Campus · Team Alpha</div>
+    </div>
+    <a href="/admin">Admin ›</a>
+  </header>
+
+  <div id="map"></div>
+
+  <section class="sheet">
+    <nav class="tabs">
+      <button data-tab="map" class="active">🗺️ Map</button>
+      <button data-tab="nearest">📍 Nearest</button>
+      <button data-tab="report">🚨 Report</button>
+    </nav>
+
+    <div class="panel" id="tab-map">
+      <div class="locbar">
+        <button class="btn primary" data-locate>📡 Use my GPS</button>
+        <span class="small muted" data-locstatus>or tap the map where you are</span>
+      </div>
+      <div class="small"><b data-bincount>–</b> bins on campus</div>
+      <div class="legend">
+        <span><i class="dot" style="background:#1f9d55"></i>Available</span>
+        <span><i class="dot" style="background:#e3342f"></i>Overflowing</span>
+        <span><i class="dot" style="background:#6b7280"></i>Damaged</span>
+        <span><i class="dot" style="background:#2563eb"></i>You</span>
+      </div>
+    </div>
+
+    <div class="panel" id="tab-nearest" hidden>
+      <div class="locbar">
+        <button class="btn primary" data-locate>📡 Use my GPS</button>
+        <span class="small muted" data-locstatus>or tap the map where you are</span>
+      </div>
+      <div id="nearest-out" class="muted">Set your location to find the closest available bin.</div>
+    </div>
+
+    <div class="panel" id="tab-report" hidden>
+      <div class="locbar">
+        <button class="btn" data-locate>📡 Use my GPS</button>
+        <span class="small muted" data-locstatus>or tap the map where the problem is</span>
+      </div>
+      <div class="types" id="types">
+        <button data-type="no_bin"><span>🚫</span>No bin</button>
+        <button data-type="overflowing"><span>🗑️</span>Overflowing</button>
+        <button data-type="damaged"><span>🔧</span>Damaged</button>
+      </div>
+      <div id="bin-pick" hidden>
+        <label class="field" for="bin-select">Which bin?</label>
+        <select id="bin-select"></select>
+        <div class="small muted">Closest bins to your location. You can also tap a bin on the map.</div>
+      </div>
+      <label class="field" for="note">Details (optional)</label>
+      <textarea id="note" maxlength="500" placeholder="e.g. No bin in LT 2, students leave bottles on the floor"></textarea>
+      <label class="field" for="reporter">Your name or matric no. (optional)</label>
+      <input type="text" id="reporter" maxlength="60" placeholder="anonymous">
+      <div style="margin-top:12px"><button class="btn primary" id="submit" style="width:100%" disabled>Send report</button></div>
+      <div class="small muted" id="submit-hint" style="margin-top:6px">Choose a problem type and set a location.</div>
+    </div>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="common.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

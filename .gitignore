@@ -1,0 +1,14 @@
+# Local database: recreated automatically on first run (python server.py --reset)
+bins.db
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

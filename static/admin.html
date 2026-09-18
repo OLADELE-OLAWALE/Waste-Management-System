@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Bin Allocation Dashboard · LASU Epe</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="admin">
+  <header class="topbar">
+    <div>
+      <div class="brand">📊 Waste-Bin Allocation & Monitoring</div>
+      <div class="sub">LASU Epe Campus · Team Alpha PoC · <span id="live">connecting…</span></div>
+    </div>
+    <a href="/">Student app ›</a>
+  </header>
+
+  <section class="kpis" id="kpis"></section>
+
+  <div class="main">
+    <div class="mapwrap">
+      <div id="map"></div>
+      <div class="layers">
+        <label><input type="checkbox" id="l-heat" checked> 🔥 Demand heatmap</label>
+        <label><input type="checkbox" id="l-zones" checked> Zone hotspot scores</label>
+        <label><input type="checkbox" id="l-bins" checked> 🗑️ Bins</label>
+        <label><input type="checkbox" id="l-recs" checked> ➕ Recommended bins</label>
+        <label><input type="checkbox" id="l-reports"> 🚨 Open reports</label>
+      </div>
+      <div class="editbanner" id="editbanner" hidden>Edit mode: click map to add a bin · drag bins and zone centres</div>
+    </div>
+
+    <aside class="side">
+      <nav class="tabs">
+        <button data-tab="hotspots" class="active">🔥 Hotspots</button>
+        <button data-tab="recs">➕ Allocate</button>
+        <button data-tab="reports">🚨 Reports</button>
+        <button data-tab="settings">⚙️ Model</button>
+        <button data-tab="demo">🎬 Demo</button>
+      </nav>
+
+      <div class="panel" id="tab-hotspots">
+        <div class="row small muted" style="margin-bottom:8px">
+          <span>Hotspot score = 40% reports + 30% bin deficit + 20% foot traffic + 10% overflow rate. Δ = change since baseline.</span>
+          <button class="btn sm" id="baseline" style="flex:0 0 auto">Reset Δ baseline</button>
+        </div>
+        <table>
+          <thead><tr><th>#</th><th>Zone</th><th>Score</th><th>Δ</th><th>Bins<br>have/need</th><th>Reports</th></tr></thead>
+          <tbody id="zone-rows"></tbody>
+        </table>
+      </div>
+
+      <div class="panel" id="tab-recs" hidden>
+        <div class="callout" id="rec-summary"></div>
+        <div id="rec-list"></div>
+      </div>
+
+      <div class="panel" id="tab-reports" hidden>
+        <div class="row" style="margin-bottom:8px">
+          <select id="report-filter">
+            <option value="open">Open reports</option>
+            <option value="all">All reports</option>
+          </select>
+        </div>
+        <table>
+          <thead><tr><th>#</th><th>Type</th><th>Where</th><th>When</th><th></th></tr></thead>
+          <tbody id="report-rows"></tbody>
+        </table>
+      </div>
+
+      <div class="panel" id="tab-settings" hidden>
+        <div class="section">
+          <h3>Assumptions behind "bins needed"</h3>
+          <div class="formgrid" id="settings-form"></div>
+          <div class="row" style="margin-top:10px"><button class="btn primary" id="save-settings">Save & recalculate</button></div>
+        </div>
+        <div class="section small muted">
+          <b>Bins needed per zone</b> = zone waste (kg/day) × days between collections ÷ (bin litres × density × fill factor).<br>
+          Zone waste = campus waste × zone's share of foot traffic.<br>
+          <b>Hotspot score</b> components (each 0–1): reports = decayed weighted reports (no-bin 3, overflow 2, damaged 1) / (signal + 6);
+          deficit = missing bins ÷ bins needed; traffic = zone ÷ busiest zone; overflow = overflow reports (14 d) per bin.
+        </div>
+      </div>
+
+      <div class="panel" id="tab-demo" hidden>
+        <div class="section">
+          <h3>Simulate a wave of student reports</h3>
+          <div class="row">
+            <select id="sim-zone"></select>
+          </div>
+          <div class="row" style="margin-top:6px">
+            <select id="sim-type">
+              <option value="no_bin">No bin</option>
+              <option value="overflowing">Overflowing</option>
+              <option value="damaged">Damaged</option>
+            </select>
+            <input type="number" id="sim-count" value="5" min="1" max="50">
+            <button class="btn primary" id="simulate">Send</button>
+          </div>
+          <div class="small muted" style="margin-top:6px">Or send a real report from a phone at <b id="phone-url"></b>.</div>
+        </div>
+        <div class="section">
+          <h3>Edit campus data</h3>
+          <div class="row">
+            <button class="btn" id="edit-toggle">✏️ Enter edit mode</button>
+          </div>
+          <div class="small muted" style="margin-top:6px">Walk the campus, then drag each bin and zone centre to its real position (satellite view helps).
+            Zone foot traffic can be changed by clicking the zone centre.</div>
+        </div>
+        <div class="section">
+          <h3>Reset</h3>
+          <div class="row">
+            <button class="btn danger" id="reset-history">Reset with 14-day history</button>
+            <button class="btn danger" id="reset-clean">Reset: bins only, no reports</button>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+<script src="common.js"></script>
+<script src="admin.js"></script>
+</body>
+</html>

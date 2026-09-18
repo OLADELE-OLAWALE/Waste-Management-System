@@ -1,0 +1,52 @@
+# BinFinder: Digital Bin Availability System (Team Alpha PoC)
+
+A web prototype for LASU Epe Campus: a campus bin map, a nearest-bin finder, student problem reports, an admin
+dashboard, a demand heatmap, and bin allocation recommendations.
+See [DESIGN.md](DESIGN.md) for the page designs, data model, and formulas.
+
+## Run it
+You need Python 3.9+ and nothing else (standard library only). The map tiles need internet access.
+
+```
+cd "TEAM ALPHA/bin-system"
+python server.py            # first run creates bins.db with representative demo data
+python server.py --reset    # restore demo data before a presentation
+```
+* Student app: http://localhost:8000/
+* Admin dashboard: http://localhost:8000/admin
+* On phones: connect to the same Wi-Fi and open the "On the same Wi-Fi" address the server prints.
+  (Phone GPS needs https, so use "tap the map" to set your location.)
+
+## Files
+| File | Stage |
+|---|---|
+| `DESIGN.md` | 1: Design |
+| `static/index.html`, `app.js`, `admin.html`, `admin.js`, `common.js`, `style.css` | 2: Frontend (Leaflet map) |
+| `database.py` (SQLite `bins.db`), `server.py` (REST API) | 3: Database |
+| `intelligence.py` | 4: Hotspot scores, heatmap, recommendations |
+
+## Stage 5: Demo script (about 5 minutes)
+Before you start: `python server.py --reset`. Open `/admin` on the projector and `/` on a phone or a second window.
+
+1. **The problem, in data** (Hotspots tab). There are 16 mapped bins and 8 are overflowing, matching our field
+   observation. Classrooms have 0 bins and are ranked critical, matching the survey (78.6% saw no bins in
+   classrooms). Point out the KPI: ~59 bins are needed with weekly collection, but only ~21 with collection every 2 days.
+2. **Find the nearest bin** (student app). Tap near the cafeteria and open 📍 Nearest. The app skips the
+   closer overflowing bin and routes to an available one.
+3. **Submit a test report.** On the student app, go to 🚨 Report › No bin, tap near *Sports Courts*, add a note, and send.
+4. **Watch it arrive** (dashboard, within 4 s). A toast appears, the point pulses on the map, and the Sports
+   Courts row flashes with its score ▲ (≈18 → ≈32, low → moderate). A `+1` recommendation appears.
+5. **Watch the hotspot change.** Go to 🎬 Demo, choose Sports Courts › No bin × 6 › Send. The score climbs to about
+   49 (high) and the heatmap turns red there.
+6. **Recommend where to add bins** (➕ Allocate). Each card gives the zone, how many bins, map coordinates,
+   and the evidence ("7 'no bin' reports; 1 working bin vs 2 needed; 150 people/day"). Click a card to zoom to the site.
+7. **Close the loop.** Click an overflowing bin › ✅ Mark emptied. It turns green, its reports resolve, and the score drops.
+8. **What-if** (⚙️ Model). Change "Days between collections" from 7 to 3, then Save. The bins needed and the
+   recommendations shrink. This is the evidence for the collection-frequency part of our recommendation.
+
+## Before real campus data replaces the demo data
+1. Walk the campus with a phone and note each bin's position and condition.
+2. Open 🎬 Demo › ✏️ Edit mode. Drag each zone centre onto the correct building (click it to set foot traffic),
+   drag or add bins (click the map to add), and delete bins that don't exist.
+3. Use **Reset: bins only, no reports** first if you want to start without the synthetic 14-day history
+   (note: that reset restores the demo bins too, so edit bins afterwards).
