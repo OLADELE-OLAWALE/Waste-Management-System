@@ -21,9 +21,47 @@ python server.py --reset    # restore demo data before a presentation
 | File | Stage |
 |---|---|
 | `DESIGN.md` | 1: Design |
-| `static/index.html`, `app.js`, `admin.html`, `admin.js`, `common.js`, `style.css` | 2: Frontend (Leaflet map) |
-| `database.py` (SQLite `bins.db`), `server.py` (REST API) | 3: Database |
+| `public/index.html`, `app.js`, `admin.html`, `admin.js`, `common.js`, `style.css` | 2: Frontend (Leaflet map) |
+| `database.py` (SQLite `bins.db`), `turso.py` (hosted SQLite), `server.py` (REST API) | 3: Database |
 | `intelligence.py` | 4: Hotspot scores, heatmap, recommendations |
+| `api/index.py`, `vercel.json` | Deployment entry point for Vercel |
+
+## Deploy to Vercel
+
+Vercel runs the app as a serverless function with no permanent disk, so the data lives in Turso
+(free hosted SQLite). The same code runs both ways: with no Turso environment variables set,
+`python server.py` uses the local `bins.db` exactly as before.
+
+**1. Create the database (turso.tech)**
+
+Sign up, create a database (choose a region near Nigeria, e.g. Frankfurt `fra`), then copy:
+* its **database URL**, which looks like `libsql://your-db-yourname.turso.io`
+* a **auth token** it generates for that database
+
+**2. Import the repo (vercel.com)**
+
+"Add New… → Project" → import this GitHub repo → before clicking Deploy, add three environment variables:
+
+| Name | Value |
+|---|---|
+| `TURSO_DATABASE_URL` | the `libsql://…` URL from step 1 |
+| `TURSO_AUTH_TOKEN` | the token from step 1 |
+| `ADMIN_PASSWORD` | any password you choose: it protects the dashboard's actions |
+
+Then Deploy. Vercel serves `public/` as static files and sends every `/api/*` request to `api/index.py`.
+
+**3. First run**
+
+Open `https://your-project.vercel.app/admin`. The tables are created on the first request and the demo
+data is seeded automatically. Any action that changes data asks once for the `ADMIN_PASSWORD` you set,
+and the browser remembers it.
+
+Anyone with the link can view the dashboard and send reports; only someone with the admin key can edit
+bins, resolve reports, change assumptions or reset the data. Vercel's free Hobby plan is for
+non-commercial projects, which this is.
+
+**Why this matters for the demo:** the deployed site is `https://`, so phone GPS works. Your teammates
+open the link on any network, and their reports appear on the dashboard within about 4 seconds.
 
 ## Stage 5: Demo script (about 5 minutes)
 Before you start: `python server.py --reset`. Open `/admin` on the projector and `/` on a phone or a second window.

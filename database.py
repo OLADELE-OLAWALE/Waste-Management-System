@@ -9,6 +9,7 @@ Tables
 """
 import json
 import math
+import os
 import random
 import sqlite3
 import threading
@@ -64,6 +65,15 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
 
 
 def connect():
+    """Hosted Turso database when configured (deployment), local SQLite file otherwise.
+
+    Set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN to use Turso; with neither set,
+    `python server.py` keeps working offline exactly as before.
+    """
+    url, token = os.environ.get("TURSO_DATABASE_URL"), os.environ.get("TURSO_AUTH_TOKEN")
+    if url and token:
+        from turso import TursoConnection
+        return TursoConnection(url, token)
     con = sqlite3.connect(DB_PATH, check_same_thread=False)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys = ON")
@@ -128,32 +138,50 @@ HISTORY = [
 ]
 
 
+def batch(con, statements):
+    """Run many statements in one round trip where the backend supports it."""
+    if hasattr(con, "batch"):
+        return con.batch(statements)
+    for sql, args in statements:
+        con.execute(sql, args)
+
+
 def reset(con, seed_history=True):
+    """Rebuild the demo data set.
+
+    Rows carry explicit ids and everything is sent in a few batches, because over a
+    hosted database (Turso) one statement per row would mean hundreds of round trips.
+    """
+    from intelligence import nearest
     with _lock:
         con.executescript("DROP TABLE IF EXISTS reports; DROP TABLE IF EXISTS bins;"
                           "DROP TABLE IF EXISTS zones; DROP TABLE IF EXISTS settings;")
         con.executescript(SCHEMA)
         now = time.time()
         rnd = random.Random(10)
-        zone_ids = []
-        for name, typ, lat, lng, rad, traffic in ZONES:
-            cur = con.execute("INSERT INTO zones (name,type,lat,lng,radius_m,foot_traffic) "
-                              "VALUES (?,?,?,?,?,?)", (name, typ, lat, lng, rad, traffic))
-            zone_ids.append((cur.lastrowid, lat, lng, rad, name))
 
+        zones, stmts = [], []
+        for i, (name, typ, lat, lng, rad, traffic) in enumerate(ZONES, 1):
+            zones.append({"id": i, "name": name, "lat": lat, "lng": lng, "radius_m": rad})
+            stmts.append(("INSERT INTO zones (id,name,type,lat,lng,radius_m,foot_traffic) "
+                          "VALUES (?,?,?,?,?,?,?)", (i, name, typ, lat, lng, rad, traffic)))
+
+        bins = []
         for i, (zi, e, n, status) in enumerate(BINS, 1):
-            zid, zlat, zlng, _, zname = zone_ids[zi]
-            lat, lng = offset(zlat, zlng, e * 0.6, n * 0.6)
-            con.execute("INSERT INTO bins (name,lat,lng,zone_id,capacity_l,status,last_emptied,created_at) "
-                        "VALUES (?,?,?,?,?,?,?,?)",
-                        (f"BIN-{i:02d} {zname}", lat, lng, zid, 111, status,
-                         now - rnd.uniform(1, 7) * 86400, now - 90 * 86400))
+            z = zones[zi]
+            lat, lng = offset(z["lat"], z["lng"], e * 0.6, n * 0.6)
+            bins.append({"id": i, "lat": lat, "lng": lng, "zone_id": z["id"], "status": status})
+            stmts.append(("INSERT INTO bins (id,name,lat,lng,zone_id,capacity_l,status,last_emptied,created_at) "
+                          "VALUES (?,?,?,?,?,?,?,?,?)",
+                          (i, f"BIN-{i:02d} {z['name']}", lat, lng, z["id"], 111, status,
+                           now - rnd.uniform(1, 7) * 86400, now - 90 * 86400)))
+        batch(con, stmts)
 
         if seed_history:
-            bins = rows(con, "SELECT * FROM bins")
+            stmts, rid = [], 0
             for zi, typ, count in HISTORY:
-                zid, zlat, zlng, rad, _ = zone_ids[zi]
-                zbins = [b for b in bins if b["zone_id"] == zid]
+                z = zones[zi]
+                zbins = [b for b in bins if b["zone_id"] == z["id"]]
                 for _ in range(count):
                     age = rnd.uniform(0.2, 14) * 86400
                     if typ != "no_bin" and zbins:
@@ -161,10 +189,18 @@ def reset(con, seed_history=True):
                         lat, lng = offset(b["lat"], b["lng"], rnd.uniform(-4, 4), rnd.uniform(-4, 4))
                         bin_id = b["id"]
                     else:
-                        lat, lng = offset(zlat, zlng, rnd.gauss(0, rad / 3), rnd.gauss(0, rad / 3))
+                        lat, lng = offset(z["lat"], z["lng"],
+                                          rnd.gauss(0, z["radius_m"] / 3), rnd.gauss(0, z["radius_m"] / 3))
                         bin_id = None
-                    insert_report(con, typ, lat, lng, bin_id, "seed", "", created_at=now - age,
-                                  apply_status=False)
+                    _, nb_d = nearest(bins, lat, lng, lambda b: b["status"] != "damaged")
+                    rid += 1
+                    stmts.append((
+                        "INSERT INTO reports (id,type,lat,lng,bin_id,zone_id,nearest_bin_m,note,reporter,"
+                        "status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                        (rid, typ, lat, lng, bin_id, z["id"],
+                         None if nb_d == float("inf") else round(nb_d, 1),
+                         "", "seed", "open", now - age)))
+            batch(con, stmts)
         con.commit()
 
 

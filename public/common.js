@@ -1,12 +1,33 @@
 // Shared helpers for the student app and admin dashboard.
 
+// The deployed dashboard asks for an admin key once and keeps it in this browser.
+// Locally (no ADMIN_PASSWORD set) the server never asks, so this stays unused.
+function adminKey() {
+  try { return localStorage.getItem("binfinder_admin_key") || ""; } catch { return ""; }
+}
+
+function setAdminKey(key) {
+  try { localStorage.setItem("binfinder_admin_key", key); } catch { /* private mode */ }
+}
+
 async function api(path, opts = {}) {
+  const headers = {};
+  if (opts.body) headers["Content-Type"] = "application/json";
+  const key = adminKey();
+  if (key) headers["X-Admin-Key"] = key;
   const res = await fetch(path, {
     method: opts.method || "GET",
-    headers: opts.body ? { "Content-Type": "application/json" } : {},
+    headers,
     body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && !opts.retried) {
+    const entered = prompt("Admin key required for this action:");
+    if (entered) {
+      setAdminKey(entered);
+      return api(path, { ...opts, retried: true });
+    }
+  }
   if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
   return data;
 }

@@ -95,5 +95,7 @@ existing bin is labelled "add capacity beside BIN-xx". Each recommendation lists
 ## Known limitations (be upfront about these in the presentation)
 * Zone positions match building clusters in satellite imagery, but the building names are guesses. Correct them in Edit mode.
 * Distances are straight-line × 1.3, not routed along real paths.
-* There is no login, so anyone can open `/admin`. This is fine for a PoC but not for deployment.
+* Anyone with the link can open `/admin` and read it. Actions that change data (editing bins, resolving
+  reports, changing assumptions, resetting) need the admin key when `ADMIN_PASSWORD` is set on the deployment.
+  There are no real user accounts: that would come after the PoC.
 * Phone browsers only allow GPS on `https://` or `localhost`. Over plain LAN http, students tap the map instead.

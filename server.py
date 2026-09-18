@@ -7,8 +7,10 @@ Run:  python server.py            (then open http://localhost:8000)
 Uses only the Python standard library: no pip install needed.
 """
 import argparse
+import hmac
 import json
 import mimetypes
+import os
 import re
 import socket
 import time
@@ -19,8 +21,13 @@ from urllib.parse import urlparse
 import database as db
 import intelligence
 
-STATIC = Path(__file__).with_name("static")
+# Page files live in public/ because that is what Vercel serves as static assets.
+STATIC = Path(__file__).with_name("public")
 con = db.connect()
+
+# When ADMIN_PASSWORD is set (deployment), dashboard actions that change or erase data
+# need it. Unset locally, so `python server.py` needs no password.
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 
 REPORT_TYPES = ("no_bin", "overflowing", "damaged")
 BIN_STATUSES = ("ok", "full", "damaged")
@@ -68,13 +75,13 @@ def analytics():
     return result
 
 
-# ---- route handlers: (method, regex) -> fn(match, body) -------------------------
+# ---- route handlers: (method, regex, admin_only) -> fn(match, body) -------------
 ROUTES = []
 
 
-def route(method, pattern):
+def route(method, pattern, admin=False):
     def deco(fn):
-        ROUTES.append((method, re.compile(f"^{pattern}$"), fn))
+        ROUTES.append((method, re.compile(f"^{pattern}$"), fn, admin))
         return fn
     return deco
 
@@ -89,7 +96,7 @@ def list_bins(m, body):
     return db.rows(con, "SELECT b.*, z.name AS zone FROM bins b LEFT JOIN zones z ON z.id=b.zone_id")
 
 
-@route("POST", "/api/bins")
+@route("POST", "/api/bins", admin=True)
 def add_bin(m, body):
     lat, lng = need(body, "lat"), need(body, "lng")
     zone, _ = intelligence.nearest(db.rows(con, "SELECT * FROM zones"), lat, lng)
@@ -106,7 +113,7 @@ def add_bin(m, body):
     return {"id": cur.lastrowid}
 
 
-@route("PUT", r"/api/bins/(\d+)")
+@route("PUT", r"/api/bins/(\d+)", admin=True)
 def update_bin(m, body):
     bid = int(m.group(1))
     b = con.execute("SELECT * FROM bins WHERE id=?", (bid,)).fetchone()
@@ -130,7 +137,7 @@ def update_bin(m, body):
     return {"ok": True}
 
 
-@route("DELETE", r"/api/bins/(\d+)")
+@route("DELETE", r"/api/bins/(\d+)", admin=True)
 def delete_bin(m, body):
     with db._lock:
         con.execute("UPDATE reports SET bin_id=NULL WHERE bin_id=?", (int(m.group(1)),))
@@ -139,7 +146,7 @@ def delete_bin(m, body):
     return {"ok": True}
 
 
-@route("POST", r"/api/bins/(\d+)/empty")
+@route("POST", r"/api/bins/(\d+)/empty", admin=True)
 def empty_bin(m, body):
     """Collection crew emptied the bin: mark OK and close its overflow reports."""
     bid, now = int(m.group(1)), time.time()
@@ -151,7 +158,7 @@ def empty_bin(m, body):
     return {"ok": True}
 
 
-@route("PUT", r"/api/zones/(\d+)")
+@route("PUT", r"/api/zones/(\d+)", admin=True)
 def update_zone(m, body):
     zid = int(m.group(1))
     z = con.execute("SELECT * FROM zones WHERE id=?", (zid,)).fetchone()
@@ -199,7 +206,7 @@ def create_report(m, body):
     return {"id": rid}
 
 
-@route("POST", r"/api/reports/(\d+)/resolve")
+@route("POST", r"/api/reports/(\d+)/resolve", admin=True)
 def resolve_report(m, body):
     with db._lock:
         con.execute("UPDATE reports SET status='resolved', resolved_at=? WHERE id=?",
@@ -213,7 +220,7 @@ def get_analytics(m, body):
     return analytics()
 
 
-@route("PUT", "/api/settings")
+@route("PUT", "/api/settings", admin=True)
 def put_settings(m, body):
     with db._lock:
         for k, v in body.items():
@@ -229,13 +236,13 @@ def put_settings(m, body):
     return db.get_settings(con)
 
 
-@route("POST", "/api/demo/reset")
+@route("POST", "/api/demo/reset", admin=True)
 def demo_reset(m, body):
     db.reset(con, seed_history=body.get("history", True))
     return {"ok": True}
 
 
-@route("POST", "/api/demo/simulate")
+@route("POST", "/api/demo/simulate", admin=True)
 def demo_simulate(m, body):
     """Fire a burst of reports around a zone to show a hotspot forming live."""
     import random
@@ -275,8 +282,27 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(raw)
 
-    def dispatch(self, method):
+    def request_path(self):
+        """The path the browser asked for.
+
+        On Vercel every /api/* URL is rewritten to this one function, and the original
+        path arrives in a header, so read that when the rewritten path shows up.
+        """
         path = urlparse(self.path).path
+        if path.rstrip("/") in ("/api/index.py", "/api/index", "/api"):
+            original = (self.headers.get("x-vercel-original-path")
+                        or self.headers.get("x-forwarded-uri") or "")
+            if original:
+                return urlparse(original).path
+        return path
+
+    def authorised(self):
+        if not ADMIN_PASSWORD:
+            return True
+        return hmac.compare_digest(self.headers.get("X-Admin-Key", ""), ADMIN_PASSWORD)
+
+    def dispatch(self, method):
+        path = self.request_path()
         if path.startswith("/api/"):
             body = {}
             length = int(self.headers.get("Content-Length") or 0)
@@ -285,15 +311,20 @@ class Handler(BaseHTTPRequestHandler):
                     body = json.loads(self.rfile.read(length))
                 except json.JSONDecodeError:
                     return self.send_json(400, {"error": "invalid JSON"})
-            for mth, rx, fn in ROUTES:
+            for mth, rx, fn, admin_only in ROUTES:
                 match = rx.match(path)
                 if match and mth == method:
+                    if admin_only and not self.authorised():
+                        return self.send_json(401, {"error": "admin key required"})
                     try:
                         with db._lock:
                             result = fn(match, body)
                         return self.send_json(200, result)
                     except ApiError as e:
                         return self.send_json(e.status, {"error": str(e)})
+                    except Exception as e:  # never leak a stack trace to the browser
+                        self.log_error("%s %s failed: %r", method, path, e)
+                        return self.send_json(500, {"error": "server error: " + type(e).__name__})
             return self.send_json(404, {"error": "not found"})
         if method != "GET":
             return self.send_json(405, {"error": "method not allowed"})
@@ -337,7 +368,7 @@ def lan_ip():
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--port", type=int, default=int(os.environ.get("PORT", 8000)))
     ap.add_argument("--reset", action="store_true", help="reload representative demo data")
     args = ap.parse_args()
     if args.reset:
