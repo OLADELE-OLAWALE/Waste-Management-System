@@ -3,7 +3,7 @@
 
 const state = {
   me: null, bins: [], markers: {}, nearest: null,
-  walkSpeed: 1.3, locating: true, locError: "", pinMode: false,
+  walkSpeed: 1.3, locating: true, locError: "", pinMode: false, routeTo: null,
   draft: { type: null, bin: null, reason: null },
 };
 let map, cluster, meMarker, routeLine, dropMarker;
@@ -94,8 +94,10 @@ async function loadBins() {
     if (state.markers[b.id]) {
       state.markers[b.id].setLatLng([b.lat, b.lng]);
     } else {
-      const mk = L.marker([b.lat, b.lng], { icon: binIcon(b.status), binId: b.id });
+      const mk = L.marker([b.lat, b.lng], { icon: binIcon(b.status) });
       mk.bindPopup(() => binPopup(b.id), { maxWidth: 260, autoPanPadding: [20, 20] });
+      mk.on("popupopen", () => { state.routeTo = b.id; renderAnswer(); });
+      mk.on("popupclose", () => { state.routeTo = null; renderAnswer(); });
       state.markers[b.id] = mk;
       cluster.addLayer(mk);
     }
@@ -136,7 +138,10 @@ function locate() {
     },
     (err) => locateFailed(err.code === 1 ? "Location permission was turned down."
       : "We could not get a GPS fix."),
-    { enableHighAccuracy: true, timeout: 10000 });
+    // A fix the phone already took in the last minute is good enough for "which
+    // bin is nearest" and returns instantly, which is what keeps the answer
+    // inside five seconds on a real phone.
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
 }
 
 function locateFailed(why) {
@@ -212,8 +217,9 @@ function renderAnswer() {
         <div class="answer-who">
           <div class="label">Nearest available bin</div>
           <div class="name">${esc(n.name)}</div>
-          <div class="small muted">~${walkMin(n.d)} min walk · ${esc(n.zone || "")}</div>
-          <div class="small muted">Status updated ${ago(n.status_at || n.created_at)}</div>
+          <div class="small"><span class="chip ok">${STATUS.ok.label}</span>
+            <span class="muted">· ~${walkMin(n.d)} min walk</span></div>
+          <div class="small muted">${esc(n.zone || "")} · updated ${ago(n.status_at || n.created_at)}</div>
         </div>
       </div>
       ${skipped}
@@ -224,8 +230,9 @@ function renderAnswer() {
     </div>`;
   document.getElementById("a-dir").addEventListener("click", () => directionsTo(n.id));
   document.getElementById("a-report").addEventListener("click", openChooser);
-  drawRoute(n);
-  highlight(n.id);
+  const tapped = state.routeTo && state.bins.find((b) => b.id === state.routeTo);
+  drawRoute(tapped || n);
+  highlight(tapped ? tapped.id : n.id);
 }
 
 function highlight(id) {
@@ -266,6 +273,7 @@ function binPopup(id) {
     <b>${esc(b.name)}</b>
     <div class="small"><span class="chip ${b.status}">${STATUS[b.status].label}</span>
       ${d != null ? `· ${walkM(d)} m away` : ""}</div>
+    <div class="small muted">Updated ${ago(b.status_at || b.created_at)}</div>
     <button class="btn primary sm" onclick="directionsTo(${b.id})">➤ Directions</button>
     <a href="#" class="small" onclick="reportBin(${b.id});return false">Report this bin</a>
   </div>`;

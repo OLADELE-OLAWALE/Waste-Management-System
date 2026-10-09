@@ -267,6 +267,7 @@ function renderReports() {
   document.getElementById("n-request").textContent = open.filter(isRequest).length;
   document.querySelectorAll(".stream").forEach((b) => b.classList.toggle("sel", b.dataset.stream === stream));
 
+  renderTopBins();
   const list = reports
     .filter((r) => (stream === "request") === isRequest(r))
     .filter((r) => filter === "all" || r.status === "open")
@@ -291,6 +292,29 @@ function renderReports() {
     }
     const r = reports.find((x) => x.id === Number(tr.dataset.id));
     map.setView([r.lat, r.lng], 19);
+  }));
+}
+
+function renderTopBins() {
+  const box = document.getElementById("top-bins");
+  if (stream === "request") { box.innerHTML = ""; return; }
+  const since = Date.now() / 1000 - 14 * 86400;
+  const count = {};
+  for (const r of reports) {
+    if (isRequest(r) || r.bin_id == null || r.created_at < since) continue;
+    count[r.bin_id] = (count[r.bin_id] || 0) + 1;
+  }
+  const top = Object.entries(count).sort((a, b) => b[1] - a[1]).slice(0, 5);
+  if (!top.length) { box.innerHTML = ""; return; }
+  box.innerHTML = `<div class="section"><h3>Most reported bins · last 14 days</h3>
+    <ol class="topbins">${top.map(([id, n]) => {
+      const b = bins.find((x) => x.id === Number(id));
+      return `<li data-bin="${id}"><span>${esc(b ? b.name : `bin ${id}`)}</span>
+        <span class="n">${n} report${n === 1 ? "" : "s"}</span></li>`;
+    }).join("")}</ol></div>`;
+  box.querySelectorAll("li[data-bin]").forEach((li) => li.addEventListener("click", () => {
+    const b = bins.find((x) => x.id === Number(li.dataset.bin));
+    if (b) map.setView([b.lat, b.lng], 19);
   }));
 }
 

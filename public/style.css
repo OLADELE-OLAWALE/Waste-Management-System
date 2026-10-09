@@ -215,6 +215,14 @@ tr.flash { animation: flash 2.5s ease-out; }
 .rtype.overflowing { background: #c81e1e; }
 .rtype.damaged { background: #4b5563; }
 .flagline { color: var(--green-dark); font-weight: 600; }
+/* A flex list item drops its own marker, so the rank is drawn by a counter. */
+.topbins { list-style: none; margin: 0; padding: 0; font-size: 13px; counter-reset: tb; }
+.topbins li { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0;
+  border-top: 1px solid var(--line); cursor: pointer; counter-increment: tb; }
+.topbins li::before { content: counter(tb) "."; color: var(--muted); margin-right: 6px; }
+.topbins li > span:first-of-type { flex: 1; }
+.topbins li:hover { background: #f9fafb; }
+.topbins .n { color: var(--red); font-weight: 700; white-space: nowrap; }
 
 /* ---------- one site for phones, tablets and projectors ---------- */
 
