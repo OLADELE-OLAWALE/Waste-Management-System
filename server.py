@@ -35,9 +35,12 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 REPORT_TYPES = ("no_bin", "overflowing", "damaged")
 BIN_STATUSES = ("ok", "full", "damaged")
 
-# Duplicate protection: the same phone repeating the same report type within this
-# distance and time is treated as a double tap, not as new evidence.
-DUPLICATE_WINDOW_S = 10 * 60
+REPORT_REASONS = ("litter_on_ground", "long_walk", "busy_spot", "other")
+
+# Duplicate protection: one report per device, per bin, per day. Several students
+# reporting the same bin is real signal; the same phone repeating itself is not.
+# A "request a bin here" report has no bin, so the same rule applies by distance.
+DUPLICATE_WINDOW_S = 24 * 3600
 DUPLICATE_RADIUS_M = 25
 REPORTS_PER_HOUR = 30          # per network, to absorb a burst on a public link
 # Reports store a hash of the network address, never the address itself.
@@ -88,6 +91,8 @@ def analytics():
         "bins_damaged": sum(b["status"] == "damaged" for b in bins),
         "bins_required": sum(z["bins_required"] for z in result["zones"]),
         "open_reports": sum(r["status"] == "open" for r in reports),
+        "open_issues": sum(r["status"] == "open" and r["type"] != "no_bin" for r in reports),
+        "open_requests": sum(r["status"] == "open" and r["type"] == "no_bin" for r in reports),
         "reports_24h": sum(r["created_at"] >= day_ago for r in reports),
         "reports_total": len(reports),
         "bins_to_add": sum(r["add_bins"] for r in result["recommendations"]),
@@ -126,7 +131,8 @@ def health(m, body):
 
 @route("GET", "/api/campus")
 def get_campus(m, body):
-    return {"center": db.CAMPUS_CENTER, "settings": db.get_settings(con)}
+    return {"center": db.CAMPUS_CENTER, "settings": db.get_settings(con),
+            "places": db.rows(con, "SELECT id, name, lat, lng FROM zones")}
 
 
 @route("GET", "/api/bins")
@@ -141,12 +147,12 @@ def add_bin(m, body):
     with db._lock:
         n = con.execute("SELECT COALESCE(MAX(id),0)+1 FROM bins").fetchone()[0]
         cur = con.execute(
-            "INSERT INTO bins (name,lat,lng,zone_id,capacity_l,status,last_emptied,created_at) "
-            "VALUES (?,?,?,?,?,'ok',?,?)",
+            "INSERT INTO bins (name,lat,lng,zone_id,capacity_l,status,last_emptied,status_at,created_at) "
+            "VALUES (?,?,?,?,?,'ok',?,?,?)",
             (body.get("name") or f"BIN-{n:02d} {zone['name'] if zone else ''}".strip(),
              lat, lng, zone["id"] if zone else None,
              float(body.get("capacity_l", db.get_settings(con)["bin_capacity_l"])),
-             time.time(), time.time()))
+             time.time(), time.time(), time.time()))
         con.commit()
     return {"id": cur.lastrowid}
 
@@ -158,6 +164,7 @@ def update_bin(m, body):
     if not b:
         raise ApiError(404, "bin not found")
     b = dict(b)
+    was = b["status"]
     if "lat" in body and "lng" in body:
         b["lat"], b["lng"] = float(body["lat"]), float(body["lng"])
         zone, _ = intelligence.nearest(db.rows(con, "SELECT * FROM zones"), b["lat"], b["lng"])
@@ -169,6 +176,8 @@ def update_bin(m, body):
     if "name" in body:
         b["name"] = str(body["name"])[:80]
     with db._lock:
+        if b["status"] != was:
+            con.execute("UPDATE bins SET status_at=? WHERE id=?", (time.time(), bid))
         con.execute("UPDATE bins SET name=?,lat=?,lng=?,zone_id=?,status=? WHERE id=?",
                     (b["name"], b["lat"], b["lng"], b["zone_id"], b["status"], bid))
         con.commit()
@@ -189,7 +198,8 @@ def empty_bin(m, body):
     """Collection crew emptied the bin: mark OK and close its overflow reports."""
     bid, now = int(m.group(1)), time.time()
     with db._lock:
-        con.execute("UPDATE bins SET status='ok', last_emptied=? WHERE id=? AND status='full'", (now, bid))
+        con.execute("UPDATE bins SET status='ok', last_emptied=?, status_at=? "
+                    "WHERE id=? AND status='full'", (now, now, bid))
         con.execute("UPDATE reports SET status='resolved', resolved_at=? "
                     "WHERE bin_id=? AND type='overflowing' AND status='open'", (now, bid))
         con.commit()
@@ -221,13 +231,12 @@ def list_reports(m, body):
                         "ORDER BY r.created_at DESC LIMIT 200")
 
 
-def check_not_duplicate(typ, lat, lng, device_id, reporter_key):
-    """Stop one phone spamming the same problem, without silencing genuine reports.
+def check_not_duplicate(typ, lat, lng, bin_id, device_id, reporter_key):
+    """One report per device, per bin, per day.
 
     Several students reporting the same overflowing bin is real signal and must count.
-    What we block is the same device repeating the same report type nearby within a few
-    minutes (double taps, or someone playing with the public link), plus an hourly cap
-    per network so a burst cannot swamp the data during a demo.
+    What we block is one phone repeating itself, plus an hourly cap per network so a
+    burst cannot swamp the data during a demo. No account needed for either.
     """
     now = time.time()
     if reporter_key:
@@ -237,10 +246,17 @@ def check_not_duplicate(typ, lat, lng, device_id, reporter_key):
             raise ApiError(429, "Too many reports from this network in the last hour.")
     if not device_id:
         return
+    since = now - DUPLICATE_WINDOW_S
+    if bin_id is not None:
+        if con.execute("SELECT COUNT(*) FROM reports WHERE device_id=? AND bin_id=? AND created_at>?",
+                       (device_id, bin_id, since)).fetchone()[0]:
+            raise ApiError(429, "You already reported this bin today. Thank you — it is counted.")
+        return
+    # "No bin here" has no bin to key on, so one request per spot per day instead.
     for r in db.rows(con, "SELECT lat, lng FROM reports WHERE device_id=? AND type=? AND created_at>?",
-                     (device_id, typ, now - DUPLICATE_WINDOW_S)):
+                     (device_id, typ, since)):
         if intelligence.haversine_m(lat, lng, r["lat"], r["lng"]) < DUPLICATE_RADIUS_M:
-            raise ApiError(429, "You already reported this here a few minutes ago. Thank you!")
+            raise ApiError(429, "You already requested a bin here today. Thank you — it is counted.")
 
 
 @route("POST", "/api/reports")
@@ -258,23 +274,39 @@ def create_report(m, body):
     reporter = str(body.get("reporter", "anonymous"))[:60] or "anonymous"
     device_id = str(body.get("device_id", ""))[:64] or None
     reporter_key = body.get("_reporter_key")
+    reason = body.get("reason") if body.get("reason") in REPORT_REASONS else None
+    if typ == "no_bin" and reason is None:
+        raise ApiError(400, "choose why a bin is needed here")
+    bin_id = int(bin_id) if bin_id is not None else None
     with db._lock:
-        check_not_duplicate(typ, lat, lng, device_id, reporter_key)
+        check_not_duplicate(typ, lat, lng, bin_id, device_id, reporter_key)
         try:
-            rid = db.insert_report(con, typ, lat, lng,
-                                   int(bin_id) if bin_id is not None else None, reporter, note,
-                                   device_id=device_id, reporter_key=reporter_key)
+            rid = db.insert_report(con, typ, lat, lng, bin_id, reporter, note,
+                                   device_id=device_id, reporter_key=reporter_key, reason=reason)
         except ValueError as e:
             raise ApiError(400, str(e))
         con.commit()
-    return {"id": rid}
+    # The confirmation screen repeats what was recorded, so the student can see that
+    # the right bin and the right problem went in — not just that something was sent.
+    row = con.execute("SELECT r.*, z.name AS zone, b.name AS bin, b.status AS bin_status, "
+                      "b.status_at AS bin_status_at FROM reports r "
+                      "LEFT JOIN zones z ON z.id=r.zone_id LEFT JOIN bins b ON b.id=r.bin_id "
+                      "WHERE r.id=?", (rid,)).fetchone()
+    out = dict(row)
+    out.pop("device_id", None)
+    out.pop("reporter_key", None)
+    week = time.time() - 7 * 86400
+    out["zone_week_count"] = con.execute(
+        "SELECT COUNT(*) FROM reports WHERE zone_id=? AND created_at>?",
+        (out["zone_id"], week)).fetchone()[0] if out["zone_id"] else 0
+    return out
 
 
 @route("GET", r"/api/reports\.csv")
 def reports_csv(m, body):
     """Download every report as a spreadsheet, for the research report's appendix."""
     fields = ["id", "type", "status", "zone", "bin", "lat", "lng", "nearest_bin_m",
-              "note", "reporter", "created_at", "resolved_at"]
+              "reason", "note", "reporter", "created_at", "resolved_at"]
     out = io.StringIO()
     w = csv.writer(out)
     w.writerow(["id", "type", "status", "zone", "bin", "latitude", "longitude",

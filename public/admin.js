@@ -16,11 +16,11 @@ let map, heatLayer;
 const groups = {};
 const binMarkers = {};
 let data = null, bins = [], reports = [];
-let baseline = null, knownReports = null, editMode = false, lastSig = "";
+let baseline = null, knownReports = null, editMode = false, lastSig = "", stream = "issue";
 
 async function init() {
   const campus = await api("/api/campus");
-  const base = baseMap("map", campus.center, 17);
+  const base = baseMap("map", campus.center, 17, "satellite");
   map = base.map;
   L.control.layers(base.layers, {}, { position: "bottomright" }).addTo(map);
   for (const g of ["zones", "bins", "recs", "reports", "fresh"]) groups[g] = L.layerGroup().addTo(map);
@@ -42,6 +42,10 @@ async function init() {
   }));
   document.getElementById("baseline").addEventListener("click", () => { baseline = scoreMap(); render(); });
   document.getElementById("report-filter").addEventListener("change", renderReports);
+  document.querySelectorAll(".stream").forEach((b) => b.addEventListener("click", () => {
+    stream = b.dataset.stream;
+    renderReports();
+  }));
   document.getElementById("save-settings").addEventListener("click", saveSettings);
   document.getElementById("simulate").addEventListener("click", simulate);
   document.getElementById("edit-toggle").addEventListener("click", toggleEdit);
@@ -96,7 +100,8 @@ function renderKpis() {
     tile(k.bins_ok, "Available now") +
     tile(k.bins_full, "Overflowing", k.bins_full ? "bad" : "") +
     tile(k.bins_damaged, "Damaged", k.bins_damaged ? "warn" : "") +
-    tile(k.open_reports, `Open reports · ${k.reports_24h} in 24 h`, "warn") +
+    tile(k.open_issues, "Open bin issues", k.open_issues ? "warn" : "") +
+    tile(k.open_requests, "Open bin requests", "purple") +
     tile(`${k.bins_required}`, `Bins needed (collection every ${data.settings.collection_interval_days} d)`) +
     tile(`+${k.bins_to_add}`, "Recommended new bins", "purple") +
     tile(k.bins_required_2day, "Bins needed if collected every 2 d");
@@ -115,7 +120,8 @@ function renderZones(fresh) {
       <td><b>${z.score.toFixed(1)}</b><div class="bar"><i style="width:${z.score}%;background:${LEVEL_COLOR[z.level]}"></i></div></td>
       <td>${delta}</td>
       <td>${z.bins_functional}/${z.bins_required}${z.bins_full ? `<br><span class="small" style="color:var(--red)">${z.bins_full} full</span>` : ""}</td>
-      <td class="small">🚫${z.reports.no_bin} 🗑️${z.reports.overflowing} 🔧${z.reports.damaged}</td>
+      <td class="small">🚫${z.reports.no_bin} 🗑️${z.reports.overflowing} 🔧${z.reports.damaged}
+        ${z.reports.week_people ? `<br><span class="flagline">${z.reports.week_people} flagged this week</span>` : ""}</td>
     </tr>`;
   }).join("");
   document.querySelectorAll("#zone-rows tr").forEach((tr) => tr.addEventListener("click", () => {
@@ -249,20 +255,35 @@ function renderRecs() {
   }));
 }
 
+// "Report a bin issue" and "Request a bin here" are two different jobs for the
+// team - repair and collection versus buying and siting a new bin - so the table
+// shows one stream at a time instead of mixing them.
+const isRequest = (r) => r.type === "no_bin";
+
 function renderReports() {
   const filter = document.getElementById("report-filter").value;
-  const list = reports.filter((r) => filter === "all" || r.status === "open").slice(0, 100);
+  const open = reports.filter((r) => r.status === "open");
+  document.getElementById("n-issue").textContent = open.filter((r) => !isRequest(r)).length;
+  document.getElementById("n-request").textContent = open.filter(isRequest).length;
+  document.querySelectorAll(".stream").forEach((b) => b.classList.toggle("sel", b.dataset.stream === stream));
+
+  const list = reports
+    .filter((r) => (stream === "request") === isRequest(r))
+    .filter((r) => filter === "all" || r.status === "open")
+    .slice(0, 100);
   const icon = { no_bin: "🚫", overflowing: "🗑️", damaged: "🔧" };
   document.getElementById("report-rows").innerHTML = list.map((r) => `
     <tr class="clickable" data-id="${r.id}">
       <td>${r.id}</td>
-      <td>${icon[r.type]} ${REPORT_LABEL[r.type]}${r.status === "resolved" ? '<br><span class="small muted">resolved</span>' : ""}</td>
+      <td><span class="rtype ${r.type}">${icon[r.type]} ${REPORT_LABEL[r.type]}</span>
+        ${r.status === "resolved" ? '<br><span class="small muted">resolved</span>' : ""}</td>
       <td>${esc(r.zone || "")}${r.bin ? `<br><span class="small muted">${esc(r.bin)}</span>` : ""}
-        ${r.nearest_bin_m != null && r.type === "no_bin" ? `<br><span class="small muted">nearest bin ${Math.round(r.nearest_bin_m)} m</span>` : ""}
+        ${r.reason ? `<br><span class="small">${esc(BIN_REASONS[r.reason] || r.reason)}</span>` : ""}
+        ${r.nearest_bin_m != null && isRequest(r) ? `<br><span class="small muted">nearest bin ${Math.round(r.nearest_bin_m)} m</span>` : ""}
         ${r.note ? `<br><span class="small">“${esc(r.note)}”</span>` : ""}</td>
       <td class="small">${ago(r.created_at)}<br><span class="muted">${esc(r.reporter)}</span></td>
       <td>${r.status === "open" ? `<button class="btn sm" data-resolve="${r.id}">Resolve</button>` : ""}</td>
-    </tr>`).join("") || '<tr><td colspan="5" class="muted">No reports.</td></tr>';
+    </tr>`).join("") || `<tr><td colspan="5" class="muted">No ${stream === "request" ? "bin requests" : "bin issues"}.</td></tr>`;
   document.querySelectorAll("#report-rows tr[data-id]").forEach((tr) => tr.addEventListener("click", async (e) => {
     if (e.target.dataset.resolve) {
       await api(`/api/reports/${e.target.dataset.resolve}/resolve`, { method: "POST" });

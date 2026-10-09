@@ -49,14 +49,14 @@ CREATE TABLE IF NOT EXISTS bins (
   lat REAL NOT NULL, lng REAL NOT NULL, zone_id INTEGER REFERENCES zones(id),
   capacity_l REAL NOT NULL DEFAULT 111,
   status TEXT NOT NULL DEFAULT 'ok' CHECK (status IN ('ok','full','damaged')),
-  last_emptied REAL, created_at REAL NOT NULL
+  last_emptied REAL, status_at REAL, created_at REAL NOT NULL
 );
 CREATE TABLE IF NOT EXISTS reports (
   id INTEGER PRIMARY KEY,
   type TEXT NOT NULL CHECK (type IN ('no_bin','overflowing','damaged')),
   lat REAL NOT NULL, lng REAL NOT NULL,
   bin_id INTEGER REFERENCES bins(id), zone_id INTEGER REFERENCES zones(id),
-  nearest_bin_m REAL, note TEXT, reporter TEXT,
+  nearest_bin_m REAL, reason TEXT, note TEXT, reporter TEXT,
   device_id TEXT, reporter_key TEXT,
   status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','resolved')),
   created_at REAL NOT NULL, resolved_at REAL
@@ -176,10 +176,11 @@ def reset(con, seed_history=True):
             z = zones[zi]
             lat, lng = offset(z["lat"], z["lng"], e * 0.6, n * 0.6)
             bins.append({"id": i, "lat": lat, "lng": lng, "zone_id": z["id"], "status": status})
-            stmts.append(("INSERT INTO bins (id,name,lat,lng,zone_id,capacity_l,status,last_emptied,created_at) "
-                          "VALUES (?,?,?,?,?,?,?,?,?)",
+            emptied = now - rnd.uniform(1, 7) * 86400
+            stmts.append(("INSERT INTO bins (id,name,lat,lng,zone_id,capacity_l,status,last_emptied,"
+                          "status_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
                           (i, f"BIN-{i:02d} {z['name']}", lat, lng, z["id"], 111, status,
-                           now - rnd.uniform(1, 7) * 86400, now - 90 * 86400)))
+                           emptied, now - rnd.uniform(0.1, 3) * 86400, now - 90 * 86400)))
         batch(con, stmts)
 
         if seed_history:
@@ -210,7 +211,7 @@ def reset(con, seed_history=True):
 
 
 def insert_report(con, typ, lat, lng, bin_id, reporter, note, created_at=None, apply_status=True,
-                  device_id=None, reporter_key=None):
+                  device_id=None, reporter_key=None, reason=None):
     from intelligence import nearest
     zones = rows(con, "SELECT * FROM zones")
     bins = rows(con, "SELECT * FROM bins")
@@ -221,24 +222,33 @@ def insert_report(con, typ, lat, lng, bin_id, reporter, note, created_at=None, a
         if b is None:
             raise ValueError("unknown bin")
         zone = next(z for z in zones if z["id"] == b["zone_id"])
+    now = created_at or time.time()
     cur = con.execute(
-        "INSERT INTO reports (type,lat,lng,bin_id,zone_id,nearest_bin_m,note,reporter,device_id,"
-        "reporter_key,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO reports (type,lat,lng,bin_id,zone_id,nearest_bin_m,reason,note,reporter,device_id,"
+        "reporter_key,status,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (typ, lat, lng, bin_id, zone["id"] if zone else None,
          None if nb_d == float("inf") else round(nb_d, 1),
-         note, reporter, device_id, reporter_key, "open", created_at or time.time()))
+         reason, note, reporter, device_id, reporter_key, "open", now))
     if apply_status and bin_id is not None:
-        con.execute("UPDATE bins SET status=? WHERE id=?",
-                    ("full" if typ == "overflowing" else "damaged", bin_id))
+        # A student report is what makes a bin stop showing as available, so the status
+        # and the "last updated" time both move the moment the report lands.
+        con.execute("UPDATE bins SET status=?, status_at=? WHERE id=?",
+                    ("full" if typ == "overflowing" else "damaged", now, bin_id))
     return cur.lastrowid
 
 
 def migrate(con):
     """Add columns introduced after a deployment already holds real reports."""
     have = {r["name"] for r in con.execute("PRAGMA table_info(reports)")}
-    for column in ("device_id", "reporter_key"):
+    for column in ("device_id", "reporter_key", "reason"):
         if column not in have:
             con.execute(f"ALTER TABLE reports ADD COLUMN {column} TEXT")
+    bin_cols = {r["name"] for r in con.execute("PRAGMA table_info(bins)")}
+    if "status_at" not in bin_cols:
+        con.execute("ALTER TABLE bins ADD COLUMN status_at REAL")
+        # Nothing recorded when these bins last changed, so fall back to the last
+        # collection, then to when the bin was mapped: never a pretend "just now".
+        con.execute("UPDATE bins SET status_at=COALESCE(last_emptied, created_at)")
     con.commit()
 
 

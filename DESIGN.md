@@ -17,31 +17,60 @@ and recommends where to place bins.
 ## Pages
 
 ### 1. Student app (`/`), mobile-first
+
+The home screen answers one question and nothing else: **where is the nearest bin I
+can use, and how far is it.** There are no tabs to choose between. GPS runs on open,
+the nearest *available* bin is highlighted, the route is drawn, and the answer is
+already on screen before the student taps anything.
+
 ```
 ┌──────────────────────────┐
-│ 🗑️ BinFinder     Admin › │
+│ 🗑️ BinFinder              │
 ├──────────────────────────┤
-│                          │
-│   satellite campus map   │  green = available, red = overflowing,
-│   🗑️  🗑️     🔵 you       │  grey = damaged; tap a bin to report it
-│        - - - ->🗑️        │  dashed line = route to nearest bin
+│   street map + campus    │  ● circle = available, ◆ diamond = overflowing,
+│   place names            │  ■ square = damaged - shape, colour and glyph,
+│   ✓   ◆     🔵 you        │  so sunlight and colour-blindness cannot hide it
+│        - - - ->✓         │  dashed line = route to the nearest available bin
 ├──────────────────────────┤
-│ 🗺️ Map │ 📍 Nearest │ 🚨 Report │
-│ [📡 Use my GPS] or tap map│
-│ 80 m · BIN-13 · ~1 min    │
+│  ┌────┐ NEAREST AVAILABLE BIN   │
+│  │ 64 │ BIN-13 Faculty Library  │
+│  │  m │ ~1 min walk             │
+│  └────┘ Status updated 2 h ago  │
+│  [ ➤ Directions ]  Report a problem │
+│  ▸ What the pins mean    │
 └──────────────────────────┘
 ```
-* **Map:** every bin with its live status.
-* **Nearest:** the closest *available* bin (full or damaged bins are skipped, and the app says so), walking
-  distance estimated as 1.3 × straight-line distance, walking time at 1.3 m/s, plus the next 3 alternatives.
-* **Report:** pick No bin / Overflowing / Damaged. Location comes from GPS or a tap on the map. Overflowing or
-  damaged reports must name a bin (the 6 closest are listed). Details and name are optional.
-* **QR stickers:** a sticker on each bin links to `/?bin=<id>`, which opens the report form with that bin already
-  selected, so reporting an overflow takes two taps and needs no GPS. Print them from `/qr.html`.
 
-**Duplicate handling.** Several students reporting the same overflowing bin is genuine evidence and must count,
-so reports are never merged. What is blocked is the *same browser* repeating the same report type within 25 m in
-10 minutes (a double tap), plus a cap of 30 reports per hour from one network so a public link cannot be flooded.
+* **Nearest bin:** full and damaged bins are skipped and the app says so. Walking
+  distance is 1.3 × straight-line, walking time at 1.3 m/s.
+* **Directions:** draws the route on the map and hands the walk to the phone's own
+  map app, which knows the footpaths.
+* **Pins:** bins that would overlap collapse into a neutral dark cluster below
+  zoom 18; at walking zoom every bin is its own pin.
+* **Place names** come from our zone list, not from the tiles: OpenStreetMap has
+  almost nothing mapped inside LASU Epe, so "the building beside the bin" has to
+  come from our own data.
+* **Bin popup:** name, status, distance, Directions, and a small report link.
+
+**Two reporting flows**, kept apart from the first tap, because they are two
+different jobs for the campus team:
+
+| Flow | Student does | Team gets |
+|---|---|---|
+| 🗑️ **Report a bin issue** | picks the bin, taps Full/overflowing or Damaged | a repair or collection job; the bin's status and "last updated" change at once |
+| 📍 **Request a bin here** | drags a pin to the spot, picks a reason | evidence for siting a *new* bin, in its own list |
+
+* **Confirmation:** every report ends on a screen that repeats the reference number,
+  what was reported, which bin or spot, what the bin now shows and when it was
+  updated, plus how many reports that area has had in the last 7 days.
+* **QR stickers:** a sticker on each bin links to `/?bin=<id>`, which opens the
+  bin-issue form with that bin already chosen. Print them from `/qr.html`.
+
+**Duplicate handling.** Several students reporting the same overflowing bin is
+genuine evidence and must count, so reports are never merged. What is blocked is
+**one report per device, per bin, per day** (per spot within 25 m for bin requests,
+which have no bin to key on), plus a cap of 30 reports per hour from one network so
+a public link cannot be flooded. None of this needs an account.
 
 ### 2. Admin dashboard (`/admin`)
 ```
@@ -49,7 +78,7 @@ so reports are never merged. What is blocked is the *same browser* repeating the
 ├──────────────── map ─────────────────┬──── tabs ────────────────────────────────┤
 │ layers: heatmap, zone scores, bins,  │ 🔥 Hotspots: ranked zones, score, Δ, bins │
 │ recommended +N pins, open reports    │ ➕ Allocate: where to add bins and why    │
-│                                      │ 🚨 Reports: resolve, zoom to              │
+│                                      │ 🚨 Reports: two streams, resolve, zoom to │
 │                                      │ ⚙️ Model: edit assumptions, recalculate  │
 │                                      │ 🎬 Demo: simulate reports, edit, reset    │
 └──────────────────────────────────────┴───────────────────────────────────────────┘

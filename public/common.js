@@ -40,25 +40,39 @@ function distanceM(lat1, lng1, lat2, lng2) {
   return 2 * R * Math.asin(Math.sqrt(a));
 }
 
+// Status is carried by shape AND glyph as well as colour: a red and a green circle
+// look the same to a colour-blind student, and almost the same on a phone held in
+// direct sunlight. Circle = available, diamond = overflowing, square = damaged.
 const STATUS = {
-  ok: { label: "Available", color: "#1f9d55" },
-  full: { label: "Overflowing", color: "#e3342f" },
-  damaged: { label: "Damaged", color: "#6b7280" },
+  ok: { label: "Available", color: "#0f7a3d", shape: "circle", glyph: "✓" },
+  full: { label: "Overflowing", color: "#c81e1e", shape: "diamond", glyph: "!" },
+  damaged: { label: "Damaged", color: "#4b5563", shape: "square", glyph: "✕" },
 };
 
-const REPORT_LABEL = { no_bin: "No bin here", overflowing: "Overflowing", damaged: "Damaged" };
+const REPORT_LABEL = { no_bin: "Bin requested here", overflowing: "Overflowing bin", damaged: "Damaged bin" };
+
+// Why a bin is wanted somewhere there is none. Kept short enough to tap once.
+const BIN_REASONS = {
+  litter_on_ground: "Litter ends up on the ground here",
+  long_walk: "Nearest bin is too far",
+  busy_spot: "Busy spot with no bin",
+  other: "Other reason",
+};
 
 function binIcon(status, extra = "") {
+  const st = STATUS[status];
   return L.divIcon({
     className: "",
-    html: `<div class="bin-pin ${extra}" style="--c:${STATUS[status].color}">🗑️</div>`,
-    iconSize: [30, 30],
-    iconAnchor: [15, 15],
-    popupAnchor: [0, -14],
+    html: `<div class="bin-pin ${st.shape} ${extra}" style="--c:${st.color}"><span>${st.glyph}</span></div>`,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+    popupAnchor: [0, -18],
   });
 }
 
-function baseMap(el, center, zoom = 17) {
+// Street map first: building and road names are what tell a student which block a
+// bin is beside. Satellite stays available for the team when placing bins.
+function baseMap(el, center, zoom = 17, base = "street") {
   const map = L.map(el, { zoomControl: true }).setView(center, zoom);
   const street = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 20, maxNativeZoom: 19, attribution: "© OpenStreetMap contributors",
@@ -66,8 +80,8 @@ function baseMap(el, center, zoom = 17) {
   const satellite = L.tileLayer(
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     { maxZoom: 20, maxNativeZoom: 19, attribution: "Imagery © Esri" });
-  satellite.addTo(map);
-  return { map, layers: { Satellite: satellite, Street: street } };
+  (base === "street" ? street : satellite).addTo(map);
+  return { map, layers: { Street: street, Satellite: satellite } };
 }
 
 function esc(s) {

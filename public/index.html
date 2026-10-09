@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>BinFinder · LASU Epe</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.min.css">
+  <link rel="stylesheet" href="vendor/leaflet/MarkerCluster.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -12,68 +13,59 @@
   <header class="topbar">
     <div>
       <div class="brand">🗑️ BinFinder</div>
-      <div class="sub">LASU Epe Campus · Team Alpha</div>
+      <div class="sub">LASU Epe Campus</div>
     </div>
     <!-- No link to /admin: the dashboard is for the team, reachable by typing the URL. -->
   </header>
 
   <div id="map"></div>
 
+  <!-- The whole home screen answers one question: where is the nearest bin I can
+       use, and how far is it. Everything else is one tap below that answer. -->
   <section class="sheet">
-    <nav class="tabs">
-      <button data-tab="map" class="active">🗺️ Map</button>
-      <button data-tab="nearest">📍 Nearest</button>
-      <button data-tab="report">🚨 Report</button>
-    </nav>
-
-    <div class="panel" id="tab-map">
-      <div class="locbar">
-        <button class="btn primary" data-locate>📡 Use my GPS</button>
-        <span class="small muted" data-locstatus>or tap the map where you are</span>
+    <div id="answer">
+      <div class="answer-card loading">
+        <div class="spin"></div>
+        <div><b>Finding your location…</b><div class="small muted">Allow location so we can show the nearest bin.</div></div>
       </div>
-      <div class="small"><b data-bincount>–</b> bins on campus</div>
+    </div>
+
+    <details class="legend-box">
+      <summary>What the pins mean</summary>
       <div class="legend">
-        <span><i class="dot" style="background:#1f9d55"></i>Available</span>
-        <span><i class="dot" style="background:#e3342f"></i>Overflowing</span>
-        <span><i class="dot" style="background:#6b7280"></i>Damaged</span>
-        <span><i class="dot" style="background:#2563eb"></i>You</span>
+        <span><i class="swatch circle" style="--c:#0f7a3d">✓</i>Available</span>
+        <span><i class="swatch diamond" style="--c:#c81e1e"><b>!</b></i>Overflowing</span>
+        <span><i class="swatch square" style="--c:#4b5563">✕</i>Damaged</span>
       </div>
-    </div>
-
-    <div class="panel" id="tab-nearest" hidden>
-      <div class="locbar">
-        <button class="btn primary" data-locate>📡 Use my GPS</button>
-        <span class="small muted" data-locstatus>or tap the map where you are</span>
-      </div>
-      <div id="nearest-out" class="muted">Set your location to find the closest available bin.</div>
-    </div>
-
-    <div class="panel" id="tab-report" hidden>
-      <div class="locbar">
-        <button class="btn" data-locate>📡 Use my GPS</button>
-        <span class="small muted" data-locstatus>or tap the map where the problem is</span>
-      </div>
-      <div class="types" id="types">
-        <button data-type="no_bin"><span>🚫</span>No bin</button>
-        <button data-type="overflowing"><span>🗑️</span>Overflowing</button>
-        <button data-type="damaged"><span>🔧</span>Damaged</button>
-      </div>
-      <div id="bin-pick" hidden>
-        <label class="field" for="bin-select">Which bin?</label>
-        <select id="bin-select"></select>
-        <div class="small muted">Closest bins to your location. You can also tap a bin on the map.</div>
-      </div>
-      <label class="field" for="note">Details (optional)</label>
-      <textarea id="note" maxlength="500" placeholder="e.g. No bin in LT 2, students leave bottles on the floor"></textarea>
-      <label class="field" for="reporter">Your name or matric no. (optional)</label>
-      <input type="text" id="reporter" maxlength="60" placeholder="anonymous">
-      <div style="margin-top:12px"><button class="btn primary" id="submit" style="width:100%" disabled>Send report</button></div>
-      <div class="small muted" id="submit-hint" style="margin-top:6px">Choose a problem type and set a location.</div>
-    </div>
+    </details>
   </section>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<!-- Pin-drop mode: the sheet gets out of the way so the student can see the map. -->
+<div class="pinbar" id="pinbar" hidden>
+  <div class="small"><b>Where is a bin needed?</b><br><span class="muted">Drag the pin, or tap the map.</span></div>
+  <div class="row">
+    <button class="btn" id="pin-cancel">Cancel</button>
+    <button class="btn primary" id="pin-confirm">Use this spot</button>
+  </div>
+</div>
+
+<!-- One overlay sheet, reused by: choose report type · bin issue · bin request · confirmation -->
+<div class="overlay" id="overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-head">
+      <h2 id="modal-title">Report a problem</h2>
+      <button class="x" id="modal-close" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<!-- Leaflet is served from our own site, not a CDN: ad blockers, tracking prevention
+     and campus network filters all block third-party scripts, which would leave the
+     page with no map at all. Leaflet 1.9.4 + leaflet.heat 0.2.0 + markercluster 1.5.3. -->
+<script src="vendor/leaflet/leaflet.min.js"></script>
+<script src="vendor/leaflet/leaflet.markercluster.js"></script>
 <script src="common.js"></script>
 <script src="app.js"></script>
 </body>

@@ -26,6 +26,7 @@ python server.py --reset    # restore demo data before a presentation
 | `intelligence.py` | 4: Hotspot scores, heatmap, recommendations |
 | `api/index.py`, `vercel.json` | Deployment entry point for Vercel |
 | `public/vendor/qrcode.min.js` | qrcodejs 1.0.0 (David Shim, MIT), served from our own site so blockers cannot break the sticker sheet |
+| `public/vendor/leaflet/` | Leaflet 1.9.4 + leaflet.heat 0.2.0 + markercluster 1.5.3, served from our own site so blockers and network filters cannot break the map |
 
 ## Deploy to Vercel
 
@@ -71,11 +72,13 @@ Before you start: `python server.py --reset`. Open `/admin` on the projector and
 1. **The problem, in data** (Hotspots tab). There are 16 mapped bins and 8 are overflowing, matching our field
    observation. Classrooms have 0 bins and are ranked critical, matching the survey (78.6% saw no bins in
    classrooms). Point out the KPI: ~59 bins are needed with weekly collection, but only ~21 with collection every 2 days.
-2. **Find the nearest bin** (student app). Tap near the cafeteria and open 📍 Nearest. The app skips the
-   closer overflowing bin and routes to an available one.
-3. **Submit a test report.** On the student app, go to 🚨 Report › No bin, tap near *Sports Courts*, add a note, and send.
+2. **Find the nearest bin** (student app). Just open the link. The nearest *available* bin, its distance and
+   the route are on screen before anything is tapped: the app skips the closer overflowing bin and says so.
+3. **Submit a test report.** Tap *Report a problem* › **Request a bin here**, drag the pin near *Sports Courts*,
+   pick a reason, and send. The confirmation screen repeats what was recorded.
 4. **Watch it arrive** (dashboard, within 4 s). A toast appears, the point pulses on the map, and the Sports
-   Courts row flashes with its score ▲ (≈18 → ≈32, low → moderate). A `+1` recommendation appears.
+   Courts row flashes with its score ▲ (≈18 → ≈32, low → moderate) and "1 flagged this week". A `+1`
+   recommendation appears. The report lands in the 🚨 Reports tab's **Bin requests** stream, not the bin-issue one.
 5. **Watch the hotspot change.** Go to 🎬 Demo, choose Sports Courts › No bin × 6 › Send. The score climbs to about
    49 (high) and the heatmap turns red there.
 6. **Recommend where to add bins** (➕ Allocate). Each card gives the zone, how many bins, map coordinates,
@@ -94,8 +97,8 @@ to keep the rain off, and test one with a phone camera before printing the full 
 ## Exporting the data
 
 The dashboard's 🚨 Reports tab has a **⬇️ CSV** button (`/api/reports.csv`) that downloads every report with its
-type, zone, bin, coordinates, distance to the nearest bin, note and timestamps: ready for the appendix of the
-research report, or for charts in Excel.
+type, zone, bin, coordinates, distance to the nearest bin, reason, note and timestamps: ready for the appendix
+of the research report, or for charts in Excel.
 
 ## On phones
 

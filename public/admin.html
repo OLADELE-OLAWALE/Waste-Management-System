@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Bin Allocation Dashboard · LASU Epe</title>
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.min.css">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -60,6 +60,16 @@
       </div>
 
       <div class="panel" id="tab-reports" hidden>
+        <div class="streams">
+          <button class="stream sel" data-stream="issue">
+            <div class="v" id="n-issue">–</div>
+            <div class="l">🗑️ Bin issues<br>full or damaged</div>
+          </button>
+          <button class="stream" data-stream="request">
+            <div class="v" id="n-request">–</div>
+            <div class="l">📍 Bin requests<br>"no bin here"</div>
+          </button>
+        </div>
         <div class="row" style="margin-bottom:8px">
           <select id="report-filter">
             <option value="open">Open reports</option>
@@ -69,7 +79,7 @@
         </div>
         <div class="tablewrap">
           <table>
-            <thead><tr><th>#</th><th>Type</th><th>Where</th><th>When</th><th></th></tr></thead>
+            <thead><tr><th>#</th><th>Type</th><th>Where / why</th><th>When</th><th></th></tr></thead>
             <tbody id="report-rows"></tbody>
           </table>
         </div>
@@ -134,8 +144,11 @@
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.heat/0.2.0/leaflet-heat.js"></script>
+<!-- Leaflet is served from our own site, not a CDN: ad blockers, tracking prevention
+     and campus network filters all block third-party scripts, which would leave the
+     page with no map at all. Leaflet 1.9.4 + leaflet.heat 0.2.0, BSD-2-Clause. -->
+<script src="vendor/leaflet/leaflet.min.js"></script>
+<script src="vendor/leaflet/leaflet-heat.js"></script>
 <script src="common.js"></script>
 <script src="admin.js"></script>
 </body>

@@ -91,7 +91,8 @@ def analyse(bins, zones, reports, s, now=None):
     by_zone = {z["id"]: z for z in zones}
 
     stats = {z["id"]: {"report_signal": 0.0, "no_bin": 0, "overflowing": 0, "damaged": 0,
-                       "open_reports": 0, "recent_overflow": 0, "points": []}
+                       "open_reports": 0, "recent_overflow": 0, "points": [],
+                       "week": 0, "week_devices": set()}
              for z in zones}
 
     heat = []
@@ -111,6 +112,11 @@ def analyse(bins, zones, reports, s, now=None):
             st["open_reports"] += 1
         if r["type"] == "overflowing" and age <= 14 * DAY:
             st["recent_overflow"] += 1
+        if age <= 7 * DAY:
+            # "12 students flagged this area this week": one phone counts once, and a
+            # report with no device id (seeded or simulated) counts as one person.
+            st["week"] += 1
+            st["week_devices"].add(r.get("device_id") or f"anon-{r['id']}")
         if r["type"] in ("no_bin", "overflowing"):
             st["points"].append((r["lat"], r["lng"], w))
         heat.append([r["lat"], r["lng"], round(w, 3)])
@@ -145,7 +151,8 @@ def analyse(bins, zones, reports, s, now=None):
             "deficit": deficit,
             "waste_kg_day": round(zone_waste_kg_day(z, total_traffic, s), 1),
             "reports": {"no_bin": st["no_bin"], "overflowing": st["overflowing"],
-                        "damaged": st["damaged"], "open": st["open_reports"]},
+                        "damaged": st["damaged"], "open": st["open_reports"],
+                        "week": st["week"], "week_people": len(st["week_devices"])},
             "_points": st["points"],
         })
 
