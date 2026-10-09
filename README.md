@@ -84,6 +84,10 @@ Before you start: `python server.py --reset`. Open `/admin` on the projector and
 6. **Recommend where to add bins** (➕ Allocate). Each card gives the zone, how many bins, map coordinates,
    and the evidence ("7 'no bin' reports; 1 working bin vs 2 needed; 150 people/day"). Click a card to zoom to the site.
 7. **Close the loop.** Click an overflowing bin › ✅ Mark emptied. It turns green, its reports resolve, and the score drops.
+7b. **Wrong reports.** On the student app report an available bin as overflowing. It stays available for
+   everyone, wears an amber ring and says "1 of 2 reports — not confirmed yet"; the dashboard logs it as
+   unconfirmed. Report the same bin from a second phone and it flips to Overflowing. Left alone for 24 h
+   with nobody repeating it, the status clears itself. Both thresholds are editable in ⚙️ Model.
 8. **What-if** (⚙️ Model). Change "Days between collections" from 7 to 3, then Save. The bins needed and the
    recommendations shrink. This is the evidence for the collection-frequency part of our recommendation.
 

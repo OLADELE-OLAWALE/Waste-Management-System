@@ -9,6 +9,12 @@ const SETTING_FIELDS = [
   ["report_half_life_days", "Report half-life (days)", "Older reports count less"],
   ["no_bin_reports_trigger", "\"No bin\" reports that force a recommendation", ""],
   ["recommend_min_score", "Minimum score to recommend", ""],
+  ["reports_to_confirm", "Reports needed to change a bin's status",
+   "Different phones. 1 = the old behaviour, one report changes it"],
+  ["confirm_window_hours", "Hours those reports must fall within", ""],
+  ["overflow_expiry_hours", "Overflowing clears itself after (hours)",
+   "Assume the bin was emptied if nobody repeats the report"],
+  ["damaged_expiry_days", "Damaged clears itself after (days)", ""],
 ];
 const LEVEL_COLOR = { critical: "#b91c1c", high: "#ea580c", moderate: "#ca8a04", low: "#65a30d" };
 
@@ -277,7 +283,8 @@ function renderReports() {
     <tr class="clickable" data-id="${r.id}">
       <td>${r.id}</td>
       <td><span class="rtype ${r.type}">${icon[r.type]} ${REPORT_LABEL[r.type]}</span>
-        ${r.status === "resolved" ? '<br><span class="small muted">resolved</span>' : ""}</td>
+        ${r.status === "resolved" ? '<br><span class="small muted">resolved</span>' : ""}
+        ${unconfirmed(r) ? `<br><span class="small pendnote">${unconfirmed(r)}</span>` : ""}</td>
       <td>${esc(r.zone || "")}${r.bin ? `<br><span class="small muted">${esc(r.bin)}</span>` : ""}
         ${r.reason ? `<br><span class="small">${esc(BIN_REASONS[r.reason] || r.reason)}</span>` : ""}
         ${r.nearest_bin_m != null && isRequest(r) ? `<br><span class="small muted">nearest bin ${Math.round(r.nearest_bin_m)} m</span>` : ""}
@@ -293,6 +300,15 @@ function renderReports() {
     const r = reports.find((x) => x.id === Number(tr.dataset.id));
     map.setView([r.lat, r.lng], 19);
   }));
+}
+
+// A report that has not yet reached the confirmation threshold is logged and
+// counted, but has not changed what students see. Say so in the table.
+function unconfirmed(r) {
+  if (r.status !== "open" || isRequest(r) || r.bin_id == null) return "";
+  const b = bins.find((x) => x.id === r.bin_id);
+  if (!b || !b.pending || b.pending.type !== r.type) return "";
+  return `${b.pending.count} of ${b.pending.needed} · not confirmed`;
 }
 
 function renderTopBins() {

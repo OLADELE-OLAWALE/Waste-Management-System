@@ -36,6 +36,14 @@ DEFAULT_SETTINGS = {
     "no_bin_reports_trigger": 3,        # >= this many "no bin" reports forces a recommendation
     "recommend_min_score": 25,
     "walking_speed_mps": 1.3,
+    # One student can be wrong, so one report does not change what everyone else
+    # sees. Two different phones within the window do.
+    "reports_to_confirm": 2,
+    "confirm_window_hours": 6,
+    # A status nobody has repeated goes stale. Overflowing clears itself, because
+    # the bin was probably emptied; damage does not fix itself, so it lasts longer.
+    "overflow_expiry_hours": 24,
+    "damaged_expiry_days": 7,
 }
 
 SCHEMA = """
@@ -180,7 +188,7 @@ def reset(con, seed_history=True):
             stmts.append(("INSERT INTO bins (id,name,lat,lng,zone_id,capacity_l,status,last_emptied,"
                           "status_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
                           (i, f"BIN-{i:02d} {z['name']}", lat, lng, z["id"], 111, status,
-                           emptied, now - rnd.uniform(0.1, 3) * 86400, now - 90 * 86400)))
+                           emptied, now - rnd.uniform(0.1, 0.8) * 86400, now - 90 * 86400)))
         batch(con, stmts)
 
         if seed_history:
@@ -230,11 +238,85 @@ def insert_report(con, typ, lat, lng, bin_id, reporter, note, created_at=None, a
          None if nb_d == float("inf") else round(nb_d, 1),
          reason, note, reporter, device_id, reporter_key, "open", now))
     if apply_status and bin_id is not None:
-        # A student report is what makes a bin stop showing as available, so the status
-        # and the "last updated" time both move the moment the report lands.
+        confirm_status(con, bin_id, typ, now)
+    return cur.lastrowid
+
+
+def _voices(con, bin_id, typ, since):
+    """How many different phones have an open report of this kind on this bin.
+
+    A report with no device id (seeded or simulated) counts as its own voice, so
+    demo data behaves like a crowd rather than like one person.
+    """
+    rows_ = rows(con, "SELECT id, device_id FROM reports WHERE bin_id=? AND type=? "
+                      "AND status='open' AND created_at>?", (bin_id, typ, since))
+    return {r["device_id"] or f"r{r['id']}" for r in rows_}
+
+
+def confirm_status(con, bin_id, typ, now=None):
+    """Flip the bin only once enough different phones agree.
+
+    One student can pick the wrong bin from the list, or report a bin that is fine.
+    Until a second phone says the same thing the report is recorded, counted and
+    visible to the team, but the bin stays available for everyone else.
+    """
+    now = now or time.time()
+    s = get_settings(con)
+    needed = max(1, int(s["reports_to_confirm"]))
+    count = len(_voices(con, bin_id, typ, now - s["confirm_window_hours"] * 3600))
+    if count >= needed:
         con.execute("UPDATE bins SET status=?, status_at=? WHERE id=?",
                     ("full" if typ == "overflowing" else "damaged", now, bin_id))
-    return cur.lastrowid
+    return {"confirmed": count >= needed, "count": count, "needed": needed}
+
+
+def pending_by_bin(con, now=None):
+    """Open reports that have not yet reached the confirmation threshold."""
+    now = now or time.time()
+    s = get_settings(con)
+    needed = max(1, int(s["reports_to_confirm"]))
+    since = now - s["confirm_window_hours"] * 3600
+    out = {}
+    for r in rows(con, "SELECT b.id AS bin_id, b.status, r.type, r.id AS rid, r.device_id "
+                       "FROM reports r JOIN bins b ON b.id=r.bin_id "
+                       "WHERE r.status='open' AND r.type!='no_bin' AND r.created_at>?", (since,)):
+        # Once the bin already shows the problem there is nothing pending about it.
+        if r["status"] == ("full" if r["type"] == "overflowing" else "damaged"):
+            continue
+        key = (r["bin_id"], r["type"])
+        out.setdefault(key, set()).add(r["device_id"] or f"r{r['rid']}")
+    return {bin_id: {"type": typ, "count": len(v), "needed": needed}
+            for (bin_id, typ), v in out.items() if len(v) < needed}
+
+
+def expire_statuses(con, now=None):
+    """Let a status that nobody has repeated go back to available.
+
+    A bin reported overflowing yesterday was probably emptied, or the report was
+    wrong; either way the app should stop hiding it. The timestamp is left at the
+    moment the information went stale, so the app says "updated 1 d ago" rather
+    than pretending someone just checked.
+    """
+    now = now or time.time()
+    s = get_settings(con)
+    changed = 0
+    for status, typ, window in (
+            ("full", "overflowing", s["overflow_expiry_hours"] * 3600),
+            ("damaged", "damaged", s["damaged_expiry_days"] * 86400)):
+        cutoff = now - window
+        for b in rows(con, "SELECT id FROM bins WHERE status=? AND status_at<?", (status, cutoff)):
+            newest = con.execute(
+                "SELECT MAX(created_at) FROM reports WHERE bin_id=? AND type=? AND status='open'",
+                (b["id"], typ)).fetchone()[0]
+            if newest and newest >= cutoff:
+                continue
+            con.execute("UPDATE bins SET status='ok', status_at=? WHERE id=?", (cutoff, b["id"]))
+            con.execute("UPDATE reports SET status='resolved', resolved_at=? "
+                        "WHERE bin_id=? AND type=? AND status='open'", (cutoff, b["id"], typ))
+            changed += 1
+    if changed:
+        con.commit()
+    return changed
 
 
 def migrate(con):

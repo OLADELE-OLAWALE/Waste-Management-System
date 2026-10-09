@@ -37,6 +37,19 @@ BIN_STATUSES = ("ok", "full", "damaged")
 
 REPORT_REASONS = ("litter_on_ground", "long_walk", "busy_spot", "other")
 
+# Stale statuses are cleared on read, because serverless hosting gives us no
+# background timer. Once a minute is often enough and keeps reads cheap.
+_last_expiry = [0.0]
+EXPIRY_CHECK_S = 60
+
+
+def sweep():
+    if time.time() - _last_expiry[0] < EXPIRY_CHECK_S:
+        return
+    _last_expiry[0] = time.time()
+    with db._lock:
+        db.expire_statuses(con)
+
 # Duplicate protection: one report per device, per bin, per day. Several students
 # reporting the same bin is real signal; the same phone repeating itself is not.
 # A "request a bin here" report has no bin, so the same rule applies by distance.
@@ -81,6 +94,9 @@ def analytics():
     s = db.settings_from_rows(settings_rows)
     bins = [dict(b) for b in bins]
     zones = [dict(z) for z in zones]
+    pending = db.pending_by_bin(con)
+    for b in bins:
+        b["pending"] = pending.get(b["id"])
     reports = [dict(r) for r in reports]
     result = intelligence.analyse(bins, zones, reports, s)
     day_ago = time.time() - 86400
@@ -137,7 +153,12 @@ def get_campus(m, body):
 
 @route("GET", "/api/bins")
 def list_bins(m, body):
-    return db.rows(con, "SELECT b.*, z.name AS zone FROM bins b LEFT JOIN zones z ON z.id=b.zone_id")
+    sweep()
+    bins = db.rows(con, "SELECT b.*, z.name AS zone FROM bins b LEFT JOIN zones z ON z.id=b.zone_id")
+    pending = db.pending_by_bin(con)
+    for b in bins:
+        b["pending"] = pending.get(b["id"])
+    return bins
 
 
 @route("POST", "/api/bins", admin=True)
@@ -293,6 +314,10 @@ def create_report(m, body):
                       "LEFT JOIN zones z ON z.id=r.zone_id LEFT JOIN bins b ON b.id=r.bin_id "
                       "WHERE r.id=?", (rid,)).fetchone()
     out = dict(row)
+    if bin_id is not None:
+        out["confirm"] = db.confirm_status(con, bin_id, typ)
+        out["bin_status"] = con.execute("SELECT status FROM bins WHERE id=?",
+                                        (bin_id,)).fetchone()[0]
     out.pop("device_id", None)
     out.pop("reporter_key", None)
     week = time.time() - 7 * 86400
@@ -335,6 +360,7 @@ def resolve_report(m, body):
 
 @route("GET", "/api/analytics")
 def get_analytics(m, body):
+    sweep()
     return analytics()
 
 

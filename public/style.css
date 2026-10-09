@@ -33,6 +33,11 @@ h1, h2, h3 { margin: 0; line-height: 1.2; }
 .bin-pin.diamond, .swatch.diamond { border-radius: 5px; transform: rotate(45deg); }
 .bin-pin.diamond > span, .swatch.diamond > b { transform: rotate(-45deg); }
 .bin-pin.dim { opacity: .45; }
+/* Reported but not yet confirmed by a second student: flagged, never hidden. */
+.bin-pin.pending, .swatch.pending { box-shadow: 0 0 0 4px #f59e0b, 0 2px 6px rgba(0,0,0,.45); }
+.bin-pin.pending.target { box-shadow: 0 0 0 4px #f59e0b, 0 0 0 9px rgba(15,122,61,.35),
+  0 2px 6px rgba(0,0,0,.45); }
+.swatch.pending { box-shadow: 0 0 0 3px #f59e0b; margin-right: 3px; }
 .bin-pin.target { box-shadow: 0 0 0 7px rgba(15,122,61,.4), 0 2px 6px rgba(0,0,0,.45); }
 .bin-pin.diamond.target { box-shadow: 0 0 0 7px rgba(200,30,30,.35), 0 2px 6px rgba(0,0,0,.45); }
 .cluster-pin { width: 38px; height: 38px; border-radius: 50%; background: #334155; color: #fff;
@@ -160,6 +165,7 @@ textarea { resize: vertical; min-height: 58px; }
 .recap .rk { color: var(--muted); }
 .recap .rv { font-weight: 600; }
 .weekly { margin-top: 10px; color: var(--green-dark); font-weight: 600; }
+.pendnote { color: #b45309; font-weight: 600; }
 
 /* ---------------- admin ---------------- */
 .tabs { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--line); }

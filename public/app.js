@@ -94,7 +94,7 @@ async function loadBins() {
     if (state.markers[b.id]) {
       state.markers[b.id].setLatLng([b.lat, b.lng]);
     } else {
-      const mk = L.marker([b.lat, b.lng], { icon: binIcon(b.status) });
+      const mk = L.marker([b.lat, b.lng], { icon: binIcon(b.status, pendingClass(b)) });
       mk.bindPopup(() => binPopup(b.id), { maxWidth: 260, autoPanPadding: [20, 20] });
       mk.on("popupopen", () => { state.routeTo = b.id; renderAnswer(); });
       mk.on("popupclose", () => { state.routeTo = null; renderAnswer(); });
@@ -223,6 +223,8 @@ function renderAnswer() {
         </div>
       </div>
       ${skipped}
+      ${n.pending ? `<div class="skipped small">${esc(pendingNote(n))}. It still counts as available
+        until a second student agrees.</div>` : ""}
       <div class="answer-actions">
         <button class="btn primary big" id="a-dir">➤ Directions</button>
         <button class="btn link" id="a-report">Report a problem</button>
@@ -235,11 +237,22 @@ function renderAnswer() {
   highlight(tapped ? tapped.id : n.id);
 }
 
+// A bin with a report that has not been confirmed yet is still available - it is
+// flagged, not hidden, because one student can be wrong about which bin it was.
+const pendingClass = (b) => (b.pending ? "pending" : "");
+
 function highlight(id) {
   for (const b of state.bins) {
     const mk = state.markers[b.id];
-    if (mk) mk.setIcon(binIcon(b.status, b.id === id ? "target" : ""));
+    if (mk) mk.setIcon(binIcon(b.status, `${pendingClass(b)} ${b.id === id ? "target" : ""}`.trim()));
   }
+}
+
+function pendingNote(b) {
+  if (!b.pending) return "";
+  const { count, needed, type } = b.pending;
+  const what = type === "overflowing" ? "overflowing" : "damaged";
+  return `${count} of ${needed} reports say it is ${what} — not confirmed yet`;
 }
 
 function drawRoute(bin, fit = false) {
@@ -274,6 +287,7 @@ function binPopup(id) {
     <div class="small"><span class="chip ${b.status}">${STATUS[b.status].label}</span>
       ${d != null ? `· ${walkM(d)} m away` : ""}</div>
     <div class="small muted">Updated ${ago(b.status_at || b.created_at)}</div>
+    ${b.pending ? `<div class="small pendnote">${esc(pendingNote(b))}</div>` : ""}
     <button class="btn primary sm" onclick="directionsTo(${b.id})">➤ Directions</button>
     <a href="#" class="small" onclick="reportBin(${b.id});return false">Report this bin</a>
   </div>`;
@@ -447,9 +461,12 @@ async function send(payload) {
 function showConfirmation(r) {
   const row = (k, v) => `<div class="rk">${k}</div><div class="rv">${v}</div>`;
   const where = r.bin ? esc(r.bin) : `Pin dropped${r.zone ? ` in ${esc(r.zone)}` : ""}`;
-  const status = r.bin
-    ? `${STATUS[r.bin_status].label} · updated ${ago(r.bin_status_at)}`
-    : "Added to the bin-request list for the campus team";
+  const c = r.confirm;
+  const status = !r.bin
+    ? "Added to the bin-request list for the campus team"
+    : c && !c.confirmed
+      ? `Still shown as ${STATUS[r.bin_status].label} — ${c.count} of ${c.needed} reports`
+      : `${STATUS[r.bin_status].label} · updated just now`;
   openModal("Report received", `
     <div class="confirm">
       <div class="tick">✅</div>
@@ -460,8 +477,12 @@ function showConfirmation(r) {
         ${row("Where", where)}
         ${row("Now shows", esc(status))}
       </div>
-      ${r.zone_week_count > 1
-        ? `<div class="weekly small">${r.zone_week_count} reports from this area in the last 7 days.</div>` : ""}
+      ${c && !c.confirmed
+        ? `<div class="weekly small">Your report is counted and the team can see it. The bin changes for
+             everyone once a second student reports the same thing.</div>`
+        : r.zone_week_count > 1
+          ? `<div class="weekly small">${r.zone_week_count} reports from this area in the last 7 days.</div>`
+          : ""}
       <button class="btn primary big full" id="r-done">Done</button>
     </div>`);
   document.getElementById("r-done").addEventListener("click", closeModal);

@@ -66,11 +66,26 @@ different jobs for the campus team:
 * **QR stickers:** a sticker on each bin links to `/?bin=<id>`, which opens the
   bin-issue form with that bin already chosen. Print them from `/qr.html`.
 
-**Duplicate handling.** Several students reporting the same overflowing bin is
-genuine evidence and must count, so reports are never merged. What is blocked is
-**one report per device, per bin, per day** (per spot within 25 m for bin requests,
-which have no bin to key on), plus a cap of 30 reports per hour from one network so
-a public link cannot be flooded. None of this needs an account.
+**Wrong reports.** One student can pick the wrong bin from the list, or report a bin that is fine.
+Three rules keep a single voice from deciding what everyone else sees, without an account system:
+
+| Rule | Setting | What it stops |
+|---|---|---|
+| One report per device, per bin, per day (per spot within 25 m for bin requests) | fixed | One phone repeating itself |
+| A bin changes status only when **two different phones** report the same thing within 6 hours | `reports_to_confirm`, `confirm_window_hours` | One mistaken or joking report hiding a working bin |
+| A status nobody repeats goes stale: overflowing clears after 24 h, damaged after 7 days | `overflow_expiry_hours`, `damaged_expiry_days` | A wrong or out-of-date status lasting forever |
+
+Plus a cap of 30 reports per hour from one network, so a public link cannot be flooded.
+
+Until the second report arrives the bin is **flagged, not hidden**: it keeps its Available status and
+still counts as the nearest usable bin, but it wears an amber ring on the map and both the card and the
+popup say "1 of 2 reports say it is overflowing — not confirmed yet". The student who reported it sees
+on the confirmation screen that their report is counted and what still has to happen. Several students
+reporting the same bin is genuine evidence and is never merged away.
+
+Expiry keeps the timestamp at the moment the information went stale rather than moving it to now, so
+the app says "updated 1 d ago" instead of pretending someone has just checked. The collection crew's
+**Mark emptied** in the dashboard still overrides everything immediately.
 
 ### 2. Admin dashboard (`/admin`)
 ```
